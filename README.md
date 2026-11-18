@@ -4,6 +4,12 @@ Jinziqi Zhang · Preprint v17 · 18 November 2026
 
 The main paper and appendix compile together from source/preprint.tex. The empirical comparison uses next-session open-to-close returns, three ETFs, and an expanding primary rule. The benchmark layers are exploratory. Read AUDIT.md for the scope of the release checks and CHANGELOG.md for the v16 changes.
 
+## Release file availability
+
+The [paper PDF](Preprint_v17.pdf) and [standalone TeX submission bundle](arxiv-source.zip) are available. To compile the paper now, extract the TeX bundle into a fresh directory and run `tectonic preprint.tex` there. The bundle includes all six PDF figures.
+
+The frozen estimator archive, `public_code_release_candidate_v5.zip`, is pending upload. The full price-to-forecast pipeline below requires that archive. The independent primary checker can run with authorized prices and the corresponding saved forecast panels.
+
 ## Reproduce
 
 Use Python 3.12 and an empty output directory. Run from the extracted package root. The price directory must contain SPY.csv, QQQ.csv and IWM.csv, with unique ascending Date and positive, same-basis Open and Close columns. See REPRODUCTION.md for source vintages, input fingerprints and earlier run evidence. The frozen estimator and its original protocol, data terms, tests and historical lockfile are in public_code_release_candidate_v5.zip. An authorized new vendor download can differ from the retained reconstruction.
