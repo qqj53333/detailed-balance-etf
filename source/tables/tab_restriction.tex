@@ -1,0 +1,20 @@
+\begin{table}[!htbp]\centering\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Closed-form reference for the cost of detailed balance}\label{tab:restriction}
+\resizebox{\linewidth}{!}{\begin{tabular}{lrrrrrrr}\toprule
+\multicolumn{8}{l}{\emph{Panel A. Final-period reference values ($10^{-3}$ nats unless stated)}}\\
+Asset & Mean $j_t$ (pp) & Mean $D_t$ & Mean $1/(2n_t)$ & Fitted reference & Frozen $j$ (pp) & Frozen reference & Observed $\mathrm{R}-\mathrm{U}$ [95\% CI]\\\midrule
+SPY & $-$1.40 & 1.363 & 0.073 & 1.289 & $-$1.29 & 1.087 & $+$1.315 [$-$0.422, $+$3.131]\\
+QQQ & $-$0.77 & 0.450 & 0.095 & 0.355 & $-$0.96 & 0.564 & $+$0.685 [$-$0.358, $+$1.681]\\
+IWM & $-$1.32 & 1.232 & 0.102 & 1.131 & $-$1.04 & 0.650 & $+$1.595 [$-$0.140, $+$3.359]\\
+\bottomrule\end{tabular}}
+
+\medskip
+\resizebox{\linewidth}{!}{\begin{tabular}{lrrrrrr}\toprule
+\multicolumn{7}{l}{\emph{Panel B. Controlled simulation: closed form / Monte Carlo ($10^{-3}$ nats)}}\\
+Process & $n^\ast$ & $n=250$ & $n=500$ & $n=1{,}260$ & $n=2{,}520$ & $n=5{,}000$\\\midrule
+Reversible truth ($j=0$) & --- & $-$2.000 / $-$2.087 & $-$1.000 / $-$1.008 & $-$0.397 / $-$0.431 & $-$0.198 / $-$0.214 & $-$0.100 / $-$0.101\\
+Weak circulation ($j=-0.7$) & 1,474 & $-$1.661 / $-$1.626 & $-$0.661 / $-$0.661 & $-$0.058 / $-$0.061 & $+$0.141 / $+$0.132 & $+$0.239 / $+$0.245\\
+Fitted magnitude ($j=-1.4$) & 368 & $-$0.642 / $-$0.638 & $+$0.358 / $+$0.374 & $+$0.961 / $+$0.950 & $+$1.159 / $+$1.165 & $+$1.258 / $+$1.257\\
+\bottomrule\end{tabular}}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize $D_t=\sum_{ij}F_{ij}\log(F_{ij}/S_{ij})$ with $F=\operatorname{diag}(\pi)\hat P_t$ and $S=(F+F^\top)/2$, computed from the smoothed unrestricted matrix at each origin; $n_t$ is the number of historical transitions. The fitted reference averages $D_t-1/(2n_t)$ over origins and uses matrices that incorporate earlier final-period outcomes. The frozen reference uses only the matrix of the first final-period origin (history through 31 December 2014) and the mean of $1/(2n_t)$. Both are first-order references under a stationary chain, not tests, and neither models the updating cut points. Observed values and intervals repeat Table~\ref{tab:intervals}. In Panel B, $n^\ast=1/(2D)$ is the approximate crossover length, and Monte Carlo values repeat Table~\ref{tab:simulation}; the largest absolute difference is 1.27 Monte Carlo standard errors.}
+\end{table}

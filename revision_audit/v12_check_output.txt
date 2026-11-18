@@ -1,0 +1,16 @@
+PASS calibration point estimate is observed zero, not bootstrap mean
+PASS all nine old calibration point estimates were bootstrap means
+PASS calibration intervals and reference probabilities preserved
+PASS calibration table generated from corrected audit
+PASS simulation circulation displayed in percentage points
+PASS simulation table agrees with generator
+PASS generating matrix valid and circulation correct (0.0)
+PASS generating matrix valid and circulation correct (-0.007)
+PASS generating matrix valid and circulation correct (-0.014)
+PASS fallback refuses a fit above the documented gradient limit
+PASS fallback accepts a finite feasible fit within tolerance
+PASS every source reference and citation has a definition
+PASS IWM stepdown rejection and method sensitivity both stated
+PASS obsolete simulation value removed
+PASS QQQ middle-component interval excludes zero in both prose and table
+15 focused checks passed; no full refit or new bootstrap coverage claim.

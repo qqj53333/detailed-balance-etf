@@ -1,0 +1,14 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{7pt}
+\caption{Components of the final-period log loss}\label{tab:components}
+\footnotesize\setlength{\tabcolsep}{4pt}\begin{tabular}{llrrrrrr}\toprule
+ & & \multicolumn{3}{c}{Middle versus outer} & \multicolumn{3}{c}{Upper versus lower}\\ \cmidrule(lr){3-5}\cmidrule(lr){6-8}
+Asset & Model & $A$ & $\Delta A$ & 95\% CI & $B$ & $\Delta B$ & 95\% CI\\\midrule
+SPY & U & 0.65851 & $-$0.00535 & [$-$0.00993, $-$0.00088] & 0.43482 & $+$0.00004 & [$-$0.00104, $+$0.00105]\\
+SPY & R & 0.65838 & $-$0.00548 & [$-$0.00925, $-$0.00179] & 0.43627 & $+$0.00148 & [$-$0.00015, $+$0.00310]\\
+QQQ & U & 0.66579 & $-$0.01163 & [$-$0.01850, $-$0.00456] & 0.42118 & $-$0.00007 & [$-$0.00112, $+$0.00100]\\
+QQQ & R & 0.66613 & $-$0.01129 & [$-$0.01800, $-$0.00448] & 0.42153 & $+$0.00027 & [$-$0.00140, $+$0.00197]\\
+IWM & U & 0.65597 & $-$0.00363 & [$-$0.00738, $+$0.00004] & 0.43773 & $-$0.00131 & [$-$0.00241, $-$0.00024]\\
+IWM & R & 0.65590 & $-$0.00371 & [$-$0.00688, $-$0.00052] & 0.43940 & $+$0.00036 & [$-$0.00042, $+$0.00109]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize $A$ is $-\log m_t$ or $-\log(1-m_t)$ according to whether the target is the middle tercile; $B$ is the upper-versus-lower term of Equation~\eqref{eq:scorefactor}; it is zero on middle-tercile days and is averaged over all evaluation days, so it is an outer-state-weighted conditional loss, not the mean conditional loss on outer days. $A+B$ equals the total log loss of Table~\ref{tab:scores}. $\Delta$ is the paired difference against IID. Intervals are percentile intervals from 5,000 paired moving blocks of length 20, computed on the saved forecasts without refitting or multiplicity adjustment. Values are computed on the reconstructed panel described in Appendix~\ref{app:reconstruction}; the QQQ totals differ from Table~\ref{tab:scores} in the sixth decimal.}
+\end{table}

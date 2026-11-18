@@ -1,0 +1,449 @@
+--- v5/body.tex
++++ v6/body.tex
+@@ -1,10 +1,10 @@
+ \begin{abstract}
+-Does detailed balance improve financial state forecasts or their trading value? An expanding-window comparison evaluates IID, unrestricted three-state Markov and reversible Markov forecasts of next-session open-to-close return terciles. State thresholds use only historical observations; positions enter at the next open and liquidate at the close. SPY is the primary asset and QQQ/IWM are robustness applications. Each contributes 2,766 final-period forecasts over 2015--2025. The unrestricted chain has the lowest log loss and Brier score for every asset. Its log-loss differences against IID are $-0.005314$, $-0.011697$ and $-0.004942$ for SPY, QQQ and IWM; all primary pointwise 95\% intervals lie below zero, conditional on saved forecasts and without multiplicity adjustment. For SPY, the reversible-minus-unrestricted log-loss difference is 0.001315, with a pointwise 95\% moving-block interval of $[-0.000422,0.003131]$. The corresponding intervals also contain zero for QQQ and IWM. At five basis points per side, unrestricted allocations return $-67.05\%$, $-64.52\%$ and $-79.43\%$, respectively; all three are net losses. The experiment demonstrates neither an advantage from detailed balance nor profitable implementation of this fixed daily round-trip rule. Probability-score improvements and economic usefulness remain distinct.
++Does detailed balance improve financial state forecasts or their value under a fixed allocation rule? An expanding-window comparison evaluates IID, unrestricted three-state Markov and reversible Markov forecasts of next-session open-to-close return terciles. Thresholds use only historical observations. SPY is the primary asset; QQQ and IWM are related-asset robustness applications. Each contributes 2,766 forecasts over 2015--2025. The unrestricted chain has the lowest log loss and Brier score for every asset. Its relative log-loss reductions against IID are approximately 0.48\%, 1.06\% and 0.45\%; the corresponding pointwise 95\% block-bootstrap intervals for loss differences exclude zero, conditional on saved forecasts and without multiplicity adjustment. Reversible-minus-unrestricted log-loss intervals include zero for all three assets. Allocations remain between 47.08\% and 52.73\% exposure and trade a round trip each day. At five basis points per side, unrestricted cumulative returns are $-67.05\%$, $-64.52\%$ and $-79.43\%$. An exact daily-return decomposition separates fixed half exposure from the probability-driven adjustment; approximate unrestricted-minus-IID mean net improvements are only 0.043, 0.020 and 0.073 basis points per day. The evidence establishes neither a forecast advantage from detailed balance nor profitability of this allocation at the primary cost. It does not establish equivalence of the forecast models or absence of economic value under other decision rules.
+ \end{abstract}
+ \noindent\textbf{Keywords:} Markov chains; detailed balance; probabilistic forecasting; intraday returns; transaction costs; time reversibility.
+ 
+ \section{Introduction and related research}
+-Detailed balance restricts directional dependence while preserving a transparent probability model. This study compares that restriction with an unrestricted chain and an IID baseline, using identical information sets and an unchanged allocation rule. Its contribution is an auditable financial application, not a new reversible estimator.
++Detailed balance restricts directional dependence while preserving a transparent probability model. This study compares that restriction with an unrestricted chain and an IID baseline, using identical information sets and an unchanged allocation rule. Its contribution is a controlled financial application with explicit separation of probability accuracy, the information used by the allocation, and the cost of implementing that allocation. The reversible estimator itself is established methodology.
+ 
+ Statistical forecast accuracy need not rank decisions by economic value \citep{Granger2000,Diebold1995}. Proper scores evaluate reported probabilities \citep{Gneiting2007}; trading outcomes also depend on return magnitudes, exposure and costs. Predictability and economic value can vary across periods \citep{Pesaran1995}, and small statistical improvements can be economically useful under other portfolio mappings \citep{Campbell2008}. Thus, negative trading results here cannot invalidate probabilistic forecasting generally.
+ 
+@@ -12,7 +12,7 @@
+ 
+ Time irreversibility has an established econometric tradition: time-domain asymmetry tests \citep{Ramsey1996}, bispectral tests \citep{Hinich1998}, and distribution-based tests without moment restrictions \citep{Chen2000}. Stock-index evidence connects irreversibility with volatility asymmetry \citep{Chen2002}; other representations include multiscale volatility \citep{Zumbach2009} and visibility graphs \citep{Lacasa2016}. Finite-state reversible/irreversible decompositions already exist \citep{McCausland2007}, as do reversible estimation methods \citep{Trendelkamp2015}. Forecast ranking under the present discretization is not a test of market-wide reversibility.
+ 
+-Two questions organize the comparison. First, under identical historical information within each asset, does detailed balance improve out-of-sample state probabilities relative to unrestricted Markov and IID forecasts? Second, do identifiable probability-score gains translate into economic gains under a fixed intraday allocation with two-sided costs? Forecast evaluation and trading evaluation therefore remain separate empirical tests.
++Two questions organize the comparison. First, under identical historical information within each asset, does detailed balance improve out-of-sample state probabilities relative to unrestricted Markov and IID forecasts? Second, do identifiable probability-score gains translate into economic gains under a fixed intraday allocation with two-sided costs? Forecast evaluation and trading evaluation therefore remain separate empirical comparisons. The original experiment is supplemented here by algebraic decompositions and arithmetic rescalings of its retained summaries. These interpret the completed experiment; they are not new prespecified hypotheses or newly fitted forecasts.
+ 
+ \section{Design and estimators}
+ Adjusted daily Open and Close observations were retrieved on 13 November 2026 from Yahoo Finance through yfinance 1.8.0. Table~\ref{tab:data} describes available histories. The final sample is 2 January 2015--31 December 2025 for all assets. Session coverage matches an XNYS reference calendar; this checks dates, not price accuracy or executable fills.
+@@ -22,18 +22,23 @@
+ (q_{1,t},q_{2,t})=\operatorname{Quantile}_{1/3,\,2/3}(r_1,\ldots,r_t).
+ \label{eq:returns}
+ \end{equation}
+-After close $t$, historical returns are relabeled using these cutpoints, with lower state $r\le q_{1,t}$, middle state $q_{1,t}<r\le q_{2,t}$, and upper state $r>q_{2,t}$. They are relative terciles, not absolute losses, flat returns and gains. The target $r_{t+1}$ uses the same saved cutpoints.
++After close $t$, historical returns are relabeled using these cutpoints, with lower state $r\le q_{1,t}$, middle state $q_{1,t}<r\le q_{2,t}$, and upper state $r>q_{2,t}$. They are relative terciles, not absolute losses, flat returns and gains. The target $r_{t+1}$ uses the same saved cutpoints. Quantiles use NumPy's default linear interpolation. Equality at either cutpoint is assigned to the lower of the adjacent states, so ties can prevent exact equal-frequency bins. Write $s_{u\mid t}\in\{1,2,3\}$ for the label of historical return $r_u$ using the cutpoints available at origin $t$. A historical return can change label at a later origin. The experiment therefore evaluates an updating discretization and forecasting procedure, not a single time-homogeneous chain fitted to permanently fixed labels.
+ 
+-An expanding history requires 2,520 observations. SPY development ends in 2009 and validation covers 2010--2014. Protocol v1.1 was internally frozen before final scoring; this was not external preregistration. Past final outcomes enter later fits only after realization. QQQ/IWM apply the same specification sequentially after SPY. No settings were changed in response to final results, addressing selection concerns \citep{White2000,Bailey2014}.
++An expanding history requires 2,520 observations. SPY development ends in 2009 and validation covers 2010--2014. Protocol v1.1 was internally frozen before final scoring; this was not external preregistration. Past final outcomes enter later fits only after realization. QQQ/IWM apply the same specification sequentially after SPY. No settings were changed in response to final results. This internal freeze limits the reported design choices but is not an independently witnessed safeguard against all selection effects \citep{White2000,Bailey2014}.
+ 
+ At the first final-test origin, SPY, QQQ and IWM have 5,522, 3,980 and 3,672 historical daily observations, respectively: all exceed the minimum, but their initial expanding windows are not equal in length.
+ 
+-Let $N_{ij,t}$ count historical transitions and $\alpha=1$. IID estimates smoothed destination frequencies, nearly uniform because of training terciles. The unrestricted estimator is
++Let $N_{ij,t}=\sum_{u=1}^{t-1}\mathbf{1}\{s_{u\mid t}=i,s_{u+1\mid t}=j\}$ count adjacent historical transitions and let $\alpha=1$. The IID forecast uses destination labels $s_{2\mid t},\ldots,s_{t\mid t}$:
++\begin{equation}
++p^{\mathrm{IID}}_{t,j}=\frac{\sum_{i=1}^3N_{ij,t}+\alpha}{t-1+3\alpha}.
++\label{eq:iid}
++\end{equation}
++It is nearly uniform because of the training terciles. The unrestricted estimator is
+ \begin{equation}
+ \widehat P_{ij,t}=\frac{N_{ij,t}+\alpha}{\sum_{k=1}^3(N_{ik,t}+\alpha)}.
+ \label{eq:markov}
+ \end{equation}
+-The forecast selects the row of the current state. Reversible estimation maximizes
++The Markov forecast selects row $s_{t\mid t}$ of the estimated transition matrix. Reversible estimation maximizes
+ \begin{equation}
+ \begin{gathered}
+ \sum_{i,j}(N_{ij,t}+\alpha)\log P_{ij,t},\\
+@@ -42,28 +47,47 @@
+ \end{gathered}
+ \label{eq:reversible}
+ \end{equation}
+-This enforces $\pi_iP_{ij}=\pi_jP_{ji}$. A softmax flow parameterization and analytic gradient support numerical optimization; convergence diagnostics are retained.
++This enforces $\pi_iP_{ij}=\pi_jP_{ji}$. Six softmax masses parameterize the three diagonal flows and three off-diagonal pairs; each pair mass is split equally between its two entries. Fixing one logit to zero leaves five free parameters. BFGS uses an analytic gradient, a maximum of 500 iterations and gradient tolerance $10^{-8}$. Initialization uses smoothed diagonal counts and summed smoothed off-diagonal pair counts. A fit is accepted when the optimizer reports success or the final gradient infinity norm is at most $10^{-6}$; non-finite or unaccepted fits raise an error. These criteria document the numerical implementation without proving global optimality. Appendix B distinguishes constraint residuals, optimization diagnostics and independent refitting.
+ 
+ The positive unrestricted family has six free parameters, versus five under reversibility. With $J_{ij}=\pi_iP_{ij}-\pi_jP_{ji}$, stationarity leaves one independent three-state circulation:
+ \begin{equation}
+ J_{12}=J_{23}=J_{31};\qquad\text{detailed balance imposes }J_{12}=0.
+ \label{eq:flow}
+ \end{equation}
+-This removes directional cycle flow, not all conditional asymmetry: $P_{ij}$ and $P_{ji}$ can still differ when stationary masses differ. Crash/rebound narratives are possible motivations, but terciles discard crash magnitude and this study does not identify that mechanism.
++Here $\pi$ is the stationary distribution of the fitted matrix at a given origin; it need not describe a stable distribution throughout the market sample. This restriction removes directional cycle flow, not all conditional asymmetry: $P_{ij}$ and $P_{ji}$ can still differ when stationary masses differ. Crash/rebound narratives are possible motivations, but terciles discard crash magnitude and this study does not identify that mechanism.
+ 
+ \section{Scores and implementation}
++\subsection{Probability scores and the information used by the allocation}
+ For target label $y_{t+1}$ and forecast $p_t$, losses are
+ \begin{equation}
+ \ell_{t+1}=-\log p_{t,y_{t+1}},\qquad
+ b_{t+1}=\sum_{j=1}^3\left(p_{t,j}-\mathbf{1}\{y_{t+1}=j\}\right)^2.
+ \label{eq:scores}
+ \end{equation}
+-Calibration uses ten fixed bins per class. Empty bins supply no evidence. The fixed exposure, chosen after close $t$, is
++Calibration uses ten fixed bins per class. Empty bins supply no evidence; bin averages do not display the full range of forecasts or provide a formal calibration test.
++
++To distinguish the information rewarded by the score from that used in the allocation, define $m_t=p_{t,2}$ and $a_t=p_{t,3}/(p_{t,1}+p_{t,3})$. Let $z_{t+1}=\mathbf{1}\{y_{t+1}=2\}$ and $u_{t+1}=\mathbf{1}\{y_{t+1}=3\}$. Positivity from smoothing makes these quantities well defined. The log loss factors exactly as
++\begin{equation}
++\begin{split}
++\ell_{t+1}={}&-z_{t+1}\log m_t-(1-z_{t+1})\log(1-m_t)\\
++&-(1-z_{t+1})\{u_{t+1}\log a_t+(1-u_{t+1})\log(1-a_t)\}.
++\end{split}
++\label{eq:scorefactor}
++\end{equation}
++The first line evaluates middle versus outer terciles; the second evaluates upper versus lower conditional on an outer-tercile outcome. Meanwhile,
++\begin{equation}
++p_{t,3}-p_{t,1}=(1-m_t)(2a_t-1).
++\label{eq:tiltfactor}
++\end{equation}
++Improving the middle-versus-outer forecast need not improve upper-versus-lower discrimination. In particular, if $a_t=1/2$, changing $m_t$ does not change the allocation. These identities identify possible channels, not their empirical contributions: the aggregate results do not establish which component generated the score gains. Outer-tercile membership is relative to historical cutpoints, so neither component is itself a test of return sign or a direct measure of volatility.
++
++\subsection{Allocation and transaction costs}
++The fixed exposure, chosen after close $t$, is
+ \begin{equation}
+ w_t=\operatorname{clip}\left[0.5+0.5(p_{t,3}-p_{t,1}),0,1\right].
+ \label{eq:weight}
+ \end{equation}
+-It enters at open $t+1$, exits at close $t+1$, and earns zero cash interest:
++For valid probability vectors the expression inside the clip already lies in $[0,1]$; clipping is retained to describe the frozen implementation. The position enters at open $t+1$, exits at close $t+1$, and earns zero cash interest:
+ \begin{equation}
+ G_{t+1}=w_tr_{t+1},\qquad T_{t+1}=2w_t,\qquad
+ R_{t+1}(c)=G_{t+1}-cT_{t+1}.
+@@ -71,32 +95,59 @@
+ \end{equation}
+ Primary cost is $c=0.0005$ per side, with 1/10/25 bps sensitivities. Costs use starting notional, omitting exact exit-notional adjustment, impact and auction slippage. Approximately half exposure implies approximately one unit of turnover daily, even if consecutive weights are unchanged.
+ 
++Define $\delta_t=w_t-1/2$. Under the same accounting, the net return separates exactly into
++\begin{equation}
++R_{t+1}(c)=\underbrace{\tfrac12(r_{t+1}-2c)}_{\text{fixed half exposure}}
+++\underbrace{\delta_t r_{t+1}-2c\delta_t}_{\text{incremental gross return and cost}}.
++\label{eq:returndecomp}
++\end{equation}
++This is an additive identity for daily returns and their arithmetic means, not for compounded wealth or Sharpe ratios. A negative incremental cost means reduced exposure relative to the benchmark; it does not mean a rebate. For two models A and B, the paired mean difference likewise satisfies
++\begin{equation}
++\Delta\bar R(c)=\Delta\bar G-2c\,\Delta\bar w.
++\label{eq:paireddecomp}
++\end{equation}
++Equation~\eqref{eq:paireddecomp} permits a mean gross/net decomposition from retained mean weights and mean net differences without reconstructing daily paths. It cannot recover their separate confidence intervals.
++
+ The 1 bps case is a low-friction sensitivity and 5 bps the prespecified higher-cost benchmark, not an estimate of institutional or retail execution costs. Auction costs depend on order size, timing, volatility and imbalance direction; a quoted spread alone is not an all-in execution cost.\footnote{NYSE, Choey Li (2023), ``Closing Auction: Immediate market impact, price drift and transaction cost of trading Part 2,'' 17 October. \url{https://www.nyse.com/data-insights-blog/closing-auction-immediate-market-impact-price-drift-and-transaction-cost-of-trading-part-2-eqjcqvixj8}. This corporate-stock evidence motivates cost heterogeneity; it does not calibrate ETF auction costs for this sample.}
+ 
+ Net returns are compounded. Sharpe uses $\sqrt{252}\,\bar R/s_R$ with zero risk-free return; drawdown includes initial capital. This conventional scaling is not serial-dependence adjusted \citep{Lo2002}. Cash and daily fully invested intraday exposure are timing-matched benchmarks.
+ 
+-Paired non-circular moving blocks \citep{Kunsch1989} generate 5,000 resamples, seed 20261113, length 20 primary and 10/60 sensitivity. Percentile intervals condition on saved predictions, do not refit models, and are not multiplicity adjusted. They concern reversible-minus-unrestricted and unrestricted-minus-IID differences; an interval containing zero does not establish equivalence.
++\subsection{Inference and its scope}
++Paired non-circular moving blocks \citep{Kunsch1989} generate 5,000 resamples, seed 20261113, length 20 primary and 10/60 sensitivity. Percentile intervals condition on saved predictions, do not refit models, and are not multiplicity adjusted. They concern reversible-minus-unrestricted and unrestricted-minus-IID differences; an interval containing zero does not establish equivalence. These intervals summarize variability of paired realized losses or returns in the saved forecast evaluation, under the dependence assumptions of block resampling. They do not regenerate threshold estimation, parameter estimation or design selection across new histories. Parameter estimation can affect forecast-evaluation inference \citep{West1996}; no general coverage result is asserted here for the expanding-window, moving-threshold procedure. Block-length sensitivity does not by itself resolve structural change. SPY is the primary application, while the multiple metrics and related-ETF comparisons remain pointwise evidence rather than a familywise or independent-replication claim.
+ 
+ \section{Results and interpretation}
+-Table~\ref{tab:scores} reports the lowest log loss and Brier score for the unrestricted chain on all assets. Reversible-minus-unrestricted log-loss differences are 0.001315, 0.000685 and 0.001595 for SPY, QQQ and IWM. All primary intervals contain zero (Table~\ref{tab:intervals}). Unrestricted-minus-IID intervals lie below zero, conditionally and pointwise. Related ETFs are not independent replications. Online Appendix A supplies development/validation context and full inference sensitivities.
++\subsection{Forecast accuracy}
++Table~\ref{tab:scores} reports the lowest log loss and Brier score for the unrestricted chain on all assets. Reversible-minus-unrestricted log-loss differences are 0.001315, 0.000685 and 0.001595 for SPY, QQQ and IWM. All primary intervals contain zero (Table~\ref{tab:intervals}). Unrestricted-minus-IID intervals lie below zero, conditionally and pointwise. Related ETFs are not independent replications. Online Appendix A supplies development/validation context and full inference sensitivities. Relative to IID mean log loss, the unrestricted reductions are approximately 0.484\%, 1.065\% and 0.450\% (Table~\ref{tab:scale}). These are reductions in a scoring loss, not percentage-point gains in classification accuracy or investment returns. The intervals for reversible-minus-unrestricted differences neither demonstrate a reversible advantage nor exclude every practically relevant difference.
+ 
++\subsection{Absolute performance and incremental economic value}
+ All nine allocations lose capital at primary costs (Table~\ref{tab:economics}; Figure~\ref{fig:wealth}). SPY unrestricted cumulative return falls from 31.21\% gross to $-0.47\%$ at 1 bps and $-67.05\%$ at 5 bps per side. QQQ yields 41.66\% gross and 7.40\% at 1 bps, but a net loss of 64.52\% at 5 bps per side; IWM already loses 18.03\% gross (Table~\ref{tab:costs}). These are full-period cumulative returns, not annualized rates.
+ 
+-The mechanism runs through the upper-minus-lower probability difference: $w_t-0.5=0.5(p_{t,3}-p_{t,1})$. Across saved final forecasts, all allocations lie between 0.4708 and 0.5273; this is a descriptive audit of frozen predictions, not a new fitted specification. Consequently, daily liquidation and re-entry produce $T_{t+1}=2w_t\approx1$, charging approximately 5 bps of portfolio capital per day at the primary cost. Figure~\ref{fig:calibration} shows bin-average probabilities, not the range of individual forecasts, and does not identify low signal-to-noise as a cause. Small upper/lower differences compress exposure around one-half; the rule remains invested even without a probability tilt. State scores also omit within-state return magnitudes, so no score-based break-even threshold follows. At only 1 bps per side, unrestricted SPY and IWM still return $-0.47\%$ and $-37.83\%$, whereas QQQ returns 7.40\% (Table~\ref{tab:costs}); profitability is cost- and asset-dependent.
++Across saved final forecasts, all allocations lie between 0.4708 and 0.5273 (Online Appendix Table A5). This is a descriptive audit of frozen predictions. The rule therefore implements a small probability-driven adjustment around a persistent half exposure. Daily liquidation and re-entry produce $T_{t+1}\approx1$, charging approximately 5 bps of portfolio capital per day at the primary cost.
++
++The scale of this drag can be seen without a market-data model. If exposure were exactly one-half and every underlying intraday return were zero, wealth after 2,766 sessions at $c=0.0005$ would be $(1-c)^{2766}\approx0.250738$, a loss of 74.93\%. This is a counterfactual accounting illustration, not an attribution of 74.93 percentage points of the observed losses. Actual wealth also reflects return realizations, changing exposure and compounding. It explains why absolute losses under the fixed rule must be separated from the incremental value of its probability adjustment.
++
++Table~\ref{tab:scale} applies Equation~\eqref{eq:paireddecomp} to unrestricted-minus-IID mean net differences and retained mean weights. The approximate daily net gains are 0.0425 bps for SPY, 0.0200 bps for QQQ and 0.0728 bps for IWM. Their implied gross gains are 0.0381, 0.0249 and 0.0703 bps; mean cost changes are $-0.0045$, 0.0049 and $-0.0025$ bps. Simple annualization of the mean net differences gives 0.1071, 0.0504 and 0.1834 percentage points per 252 sessions. These small relative improvements coexist with negative absolute performance. They are arithmetic rescalings of retained point estimates, not new hypothesis tests or compound annual returns.
++
++Figure~\ref{fig:calibration} shows bin-average probabilities and does not establish which score component in Equation~\eqref{eq:scorefactor} generated the gains. The allocation ignores within-state return magnitudes, so aggregate state scores alone cannot determine an economic break-even cost. At 1 bps per side, unrestricted SPY and IWM return $-0.47\%$ and $-37.83\%$, whereas QQQ returns 7.40\% (Table~\ref{tab:costs}); profitability remains cost- and asset-dependent. No alternative allocation is selected from these outcomes.
+ 
+ IID exposure is nearly constant, ranging from 0.499864 to 0.500000 across the three assets. For an exactly constant $w>0$, $R_{t+1}=w(r_{t+1}-2c)$ implies $\operatorname{Sharpe}(wX)=\operatorname{Sharpe}(X)$, since the mean and standard deviation scale together. This explains IID and fully invested intraday Sharpe ratios agreeing to three decimals in Table~\ref{tab:economics}; the observed near-constant weights do not imply exact equality beyond rounding, equal drawdowns or equal cumulative returns.
+ 
+ QQQ provides a particularly clear contrast. Its unrestricted-minus-IID log-loss gain is largest ($-0.011697$, versus $-0.005314$ for SPY and $-0.004942$ for IWM), yet its primary mean-net-return and Sharpe-difference intervals contain zero; the latter is $[-0.008712,0.017061]$ (Online Appendix Table A3). SPY and IWM have positive primary relative-Sharpe intervals (Tables A2 and A4), despite smaller score gains. These conditional, pointwise comparisons illustrate that score improvements need not rank economic improvements monotonically; they are not a formal test of cross-asset differences, and positive relative Sharpe does not imply positive absolute profitability.
+ 
+-The overnight literature supplies context but does not identify IWM's losses: no overnight-return decomposition or causal test was performed. Moreover, positive SPY/QQQ gross results contradict a claim that every intraday allocation necessarily faces negative gross returns. Detailed balance may trade variance reduction against restriction bias, but a one-parameter restriction and intervals spanning zero cannot establish that lost circulation caused the ranking.
++\subsection{Interpretation of the restriction}
++The overnight literature supplies context but does not identify IWM's losses: no overnight-return decomposition or causal test was performed. Moreover, positive SPY/QQQ gross results contradict a claim that every intraday allocation necessarily faces negative gross returns. Detailed balance may trade variance reduction against restriction bias. With only one restricted parameter and several thousand initial observations, its potential variance benefit may be limited, but this explanation has not been tested. The present results do not report unrestricted circulation paths or a controlled reversible-versus-irreversible simulation study. They therefore do not identify lost circulation as the cause of the forecast ranking. The 15 synthetic checks in Appendix B assess implementation behavior, not the statistical power of the empirical comparison.
+ 
+ \section{Limitations and conclusion}
+-Changing terciles and a first-order model omit magnitudes and richer history. Retrospective vendor adjustments are not a point-in-time feed; common same-session adjustment factors cancel in $C/O$, but historical revisions and execution uncertainty remain. Cash interest, costs and fills are simplified. Conditional bootstrap coverage under regime changes is unproven, and conventional Sharpe scaling ignores dependence. Three related US equity ETFs do not establish broad external validity.
++The comparison is conditional on three states, first-order dependence and expanding estimation. Changing terciles omit return magnitudes and alter historical labels across origins. Fixed-threshold and rolling-window alternatives, matched historical windows across assets, and circulation diagnostics would help distinguish discretization effects, adaptation and the detailed-balance restriction. They have not been evaluated here. Three related US equity ETFs do not establish broad external validity.
+ 
+-Within the frozen design, detailed balance offers no demonstrated forecast advantage, and modest improvements over IID do not rescue the daily round-trip strategy at primary costs. This is a bounded methodological comparison. New allocations or settings would require a separately declared evaluation, since this final sample has now been examined.
++Retrospective vendor adjustments are not a point-in-time feed. Common same-session adjustment factors cancel in $C/O$, but historical revisions and execution uncertainty remain. Cash interest, costs and fills are simplified. The primary cost is a stated scenario, not an empirically estimated ETF execution cost. The nearly constant IID allocation is close to, but is not an exact performance calculation for, fixed half exposure. The analytical decomposition does not replace a path-level attribution or an uncertainty estimate for its separate components.
++
++Conditional bootstrap coverage under regime changes is unproven, the intervals are not multiplicity adjusted, and conventional Sharpe scaling ignores serial dependence. The retrospective internal freeze is not external preregistration. New settings or decision rules would need a separately declared evaluation; analyses of the already examined final sample would be exploratory.
++
++Within these boundaries, the unrestricted chain produces modest probability-score improvements over IID, while detailed balance offers no demonstrated forecast advantage. The fixed daily round-trip allocation remains unprofitable at the primary cost. Separating fixed exposure, probability adjustment and trading cost explains what the economic comparison measures, without establishing which forecast information generated the observed gains. The evidence supports this bounded conclusion, rather than equivalence of the forecast models or a general rejection of probabilistic forecasting for investment decisions.
+ 
+ \section*{Data and Code Availability Statement}
+-The accompanying replication supplement contains analysis code, synthetic tests, protocol documentation and source/data SHA-256 fingerprints. Third-party raw prices and row-level price-derived outputs are excluded. Reproduction requires independently authorized data access; a new download may differ from the archived snapshot. Online Appendix B documents verification and data limitations.
++The accompanying replication supplement contains analysis code, synthetic tests, protocol documentation and source/data SHA-256 fingerprints. Its README documents environment setup, release verification and replay using locally supplied Date, Open and Close data. Third-party raw prices and row-level price-derived outputs are excluded. Exact reproduction requires independently authorized access to the archived data version; a new download may differ. No permanent public repository or DOI is asserted for the release candidate. The manuscript source package also provides the aggregate inputs and arithmetic used for the additional descriptive table. Online Appendix B distinguishes the original verification evidence from these arithmetic additions.
+ 
+ \ifblind\else
+ \section*{Funding}
+--- v5/tables.tex
++++ v6/tables.tex
+@@ -79,3 +79,15 @@
+ \bottomrule\end{tabular}
+ \par\smallskip\parbox{0.98\linewidth}{\footnotesize Every cost is one-way; entry and exit are charged. Percentages cover the entire final period. No alternative rule is selected at any cost.}
+ \end{table}
++
++\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{7pt}
++\caption{Scale and decomposition of unrestricted-minus-IID improvements}\label{tab:scale}
++\begin{tabular}{lrrrrr}\toprule
++Asset & Loss reduction & $\Delta\bar G$ & $\Delta\overline{cT}$ & $\Delta\bar R$ & Annualized $\Delta\bar R$\\
++ & (\%) & (bps/day) & (bps/day) & (bps/day) & (pp/252 sessions)\\\midrule
++SPY & 0.484 & 0.0381 & -0.0045 & 0.0425 & 0.1071\\
++QQQ & 1.065 & 0.0249 & 0.0049 & 0.0200 & 0.0504\\
++IWM & 0.450 & 0.0703 & -0.0025 & 0.0728 & 0.1834\\
++\bottomrule\end{tabular}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Loss reduction is $-100(\bar\ell_{\mathrm U}-\bar\ell_{\mathrm{IID}})/\bar\ell_{\mathrm{IID}}$. All return and cost differences are unrestricted minus IID at 5 bps per side. The mean cost difference is $2c(\bar w_{\mathrm U}-\bar w_{\mathrm{IID}})$; the gross difference is the reported mean net difference plus this cost difference. One basis point is $10^{-4}$ in return units; pp denotes percentage points. Annualized mean differences equal $252\times100\Delta\bar R$, not differences in compound annual growth rates. Values are approximate because the input losses and mean net differences are rounded in the retained tables. The original net-return intervals appear in Appendix A; separate intervals for these gross and cost components are not estimated.}
++\end{table}
+--- v5/appendix_body.tex
++++ v6/appendix_body.tex
+@@ -2,8 +2,7 @@
+ \section{Supplementary results}
+ This appendix preserves supporting results from the same frozen experiment.
+ SPY development and validation were examined before final scoring. Their role is
+-design context rather than additional untouched evidence. All final-period
+-comparisons and cost scenarios follow the original specification.
++design context rather than additional untouched evidence. Tables A1--A4 and the validation figures retain the original results and cost scenarios. Table A5 adds exposure summaries from the retained descriptive audit.
+ \setcounter{table}{0}
+ \renewcommand{\thetable}{A\arabic{table}}
+ \renewcommand{\theHtable}{appendix.\arabic{table}}
+@@ -133,6 +132,27 @@
+ \end{figure}
+ 
+ \clearpage
++\subsection{Exposure ranges in the frozen forecasts}
++\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
++\caption{Final-period exposure by model}\label{tab:weights}
++\begin{tabular}{llrrr}\toprule
++Asset & Model & Minimum & Maximum & Mean\\\midrule
++SPY & IID & 0.499910 & 0.500000 & 0.499976\\
++SPY & Unrestricted & 0.480112 & 0.520924 & 0.499531\\
++SPY & Reversible & 0.470755 & 0.521767 & 0.500697\\
++QQQ & IID & 0.499874 & 0.500000 & 0.499968\\
++QQQ & Unrestricted & 0.478354 & 0.518332 & 0.500458\\
++QQQ & Reversible & 0.473244 & 0.527278 & 0.501639\\
++IWM & IID & 0.499864 & 0.500000 & 0.499966\\
++IWM & Unrestricted & 0.479981 & 0.521101 & 0.499720\\
++IWM & Reversible & 0.483442 & 0.512259 & 0.500618\\
++\bottomrule\end{tabular}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Fractions of portfolio capital. Values are rounded from the retained descriptive summary of 2,766 final forecasts per asset. This table describes the existing allocation and does not fit an alternative rule.}
++\end{table}
++
++The mean exposures in Table~\ref{tab:weights}, before display rounding, and the mean net differences in Tables A2--A4 provide the inputs for main-text Table 6. The IID benchmark is nearly half exposure, but differences against it are not relabeled as differences against an exactly constant one-half allocation. Recovering a complete fixed-half wealth path, within-score component contributions or separate component confidence intervals requires daily forecast and return records.
++
++\clearpage
+ \section{Computational verification and limitations}
+ The original analysis used Python 3.12.6, NumPy 2.3.2, pandas 2.3.3, SciPy 1.18.1,
+ yfinance 1.8.0 and exchange\_calendars 4.13.2. State cutpoints are recomputed only
+@@ -154,8 +174,9 @@
+ and calibration with absolute and relative tolerances of $10^{-12}$.
+ Source and evidence fingerprints matched. All saved reversible fits reported
+ convergence; the maximum detailed-balance residual was
+-$2.7755575615628914\times10^{-17}$. These checks do not establish global numerical
+-optimality for every possible input or bootstrap coverage under structural change.
++$2.7755575615628914\times10^{-17}$. The detailed-balance residual checks feasibility of a constraint imposed by the parameterization; it does not by itself establish numerical optimality. The retained evidence does not include an independent multi-start or independent-solver comparison of every final fit. These checks also do not establish bootstrap coverage under structural change.
++
++The current revision adds exact score and daily-return identities, exposure summaries from the retained descriptive audit, and arithmetic transformations of reported aggregate estimates. The cost-only illustration and main-text Table 6 can be regenerated with the accompanying arithmetic script, \texttt{recompute.py}, in the \texttt{revision\_audit} directory. These calculations do not rerun market-data estimation or independently reproduce the original final-period forecasts. The original verification statements above retain that scope.
+ 
+ Exact probability-bin replication uses round-trip floating-point parsing.
+ Otherwise, a decimal value at a bin boundary can move across the boundary after
+--- v5/figures.tex
++++ v6/figures.tex
+@@ -6,5 +6,5 @@
+ 
+ \begin{figure}[!htbp]\centering
+ \includegraphics[width=\linewidth]{../figures/figure2.pdf}
+-\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive.}\label{fig:calibration}
++\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive. The common 0--1 axes retain the full probability scale; plotted points are bin averages, not individual forecast ranges. No confidence bands or formal calibration test are reported.}\label{fig:calibration}
+ \end{figure}
+--- v5/references.tex
++++ v6/references.tex
+@@ -19,6 +19,7 @@
+ \bibitem[Pesaran and Timmermann(1995)]{Pesaran1995} Pesaran, M. H., and Timmermann, A. (1995). Predictability of Stock Returns: Robustness and Economic Significance. \textit{Journal of Finance}, 50, 1201--1228. \url{https://doi.org/10.1111/j.1540-6261.1995.tb04055.x}.
+ \bibitem[Ramsey and Rothman(1996)]{Ramsey1996} Ramsey, J. B., and Rothman, P. (1996). Time Irreversibility and Business Cycle Asymmetry. \textit{Journal of Money, Credit and Banking}, 28, 1--21. \url{https://doi.org/10.2307/2077963}.
+ \bibitem[Trendelkamp-Schroer et al.(2015)]{Trendelkamp2015} Trendelkamp-Schroer, B., Wu, H., Paul, F., and No茅, F. (2015). Estimation and uncertainty of reversible Markov models. \textit{Journal of Chemical Physics}, 143, 174101. \url{https://doi.org/10.1063/1.4934536}.
++\bibitem[West(1996)]{West1996} West, K. D. (1996). Asymptotic Inference about Predictive Ability. \textit{Econometrica}, 64, 1067--1084. \url{https://doi.org/10.2307/2171956}.
+ \bibitem[White(2000)]{White2000} White, H. (2000). A Reality Check for Data Snooping. \textit{Econometrica}, 68, 1097--1126. \url{https://doi.org/10.1111/1468-0262.00152}.
+ \bibitem[Zumbach(2009)]{Zumbach2009} Zumbach, G. (2009). Time reversal invariance in finance. \textit{Quantitative Finance}, 9, 505--515. \url{https://doi.org/10.1080/14697680802616712}.
+ \end{thebibliography}--- v5/online_appendix.tex
++++ v6/online_appendix.tex
+@@ -12,184 +12,8 @@
+ \setlength{\emergencystretch}{2em}
+ \renewcommand{\arraystretch}{1.15}
+ \hypersetup{pdftitle={Detailed Balance in Three-State ETF Forecasting},pdfauthor={}}
+-\begin{document}\title{Supplementary Appendix}\author{}\date{}\maketitle
+-\appendix
+-\section{Supplementary results}
+-This appendix preserves supporting results from the same frozen experiment.
+-SPY development and validation were examined before final scoring. Their role is
+-design context rather than additional untouched evidence. All final-period
+-comparisons and cost scenarios follow the original specification.
+-\setcounter{table}{0}
+-\renewcommand{\thetable}{A\arabic{table}}
+-\renewcommand{\theHtable}{appendix.\arabic{table}}
+-\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+-\caption{SPY development and validation}\label{tab:validation}
+-\begin{tabular}{llrrrr}\toprule
+-Interval & Model & $N$ & Log loss & Brier & Net return\\\midrule
+-Development & IID & 1744 & 1.098655 & 0.666695 & -58.54\%\\
+-Development & Unrestricted & 1744 & 1.093455 & 0.663152 & -57.96\%\\
+-Development & Reversible & 1744 & 1.095049 & 0.664269 & -58.28\%\\
+-Validation & IID & 1258 & 1.098684 & 0.666715 & -37.61\%\\
+-Validation & Unrestricted & 1258 & 1.090882 & 0.661222 & -37.32\%\\
+-Validation & Reversible & 1258 & 1.092568 & 0.662571 & -37.49\%\\
+-\bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize Development targets: 30 January 2003--31 December 2009; validation: 4 January 2010--31 December 2014. Net return uses 5 bps per side.}
+-\end{table}
+-
+-\clearpage
+-\subsection{SPY interval sensitivity}
+-\begingroup\small\setlength{\tabcolsep}{10pt}\begin{longtable}{llrrrr}
+-\caption{SPY final-period paired intervals}\\
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endfirsthead
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endhead
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 20 & 0.001315 & -0.000422 & 0.003131\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 20 & 0.000999 & -0.000141 & 0.002195\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 20 & -0.000003588 & -0.000007711 & 0.000000377\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 20 & -0.025181 & -0.039985 & -0.010388\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 10 & 0.001315 & -0.000478 & 0.003119\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 10 & 0.000999 & -0.000148 & 0.002177\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 10 & -0.000003588 & -0.000007639 & 0.000000353\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 10 & -0.025181 & -0.039741 & -0.010306\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 60 & 0.001315 & -0.000731 & 0.003194\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 60 & 0.000999 & -0.000330 & 0.002231\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 60 & -0.000003588 & -0.000007591 & 0.000000675\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 60 & -0.025181 & -0.039789 & -0.009439\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 20 & -0.005314 & -0.009963 & -0.000713\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 20 & -0.003737 & -0.006875 & -0.000653\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 20 & 0.000004251 & 0.000000115 & 0.000008744\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 20 & 0.022689 & 0.006520 & 0.038205\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 10 & -0.005314 & -0.009652 & -0.000753\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 10 & -0.003737 & -0.006605 & -0.000716\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 10 & 0.000004251 & 0.000000297 & 0.000008879\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 10 & 0.022689 & 0.006850 & 0.038612\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 60 & -0.005314 & -0.010455 & -0.000273\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 60 & -0.003737 & -0.007306 & -0.000392\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 60 & 0.000004251 & 0.000000024 & 0.000008938\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 60 & 0.022689 & 0.005845 & 0.038496\\
+-\bottomrule\end{longtable}\endgroup
+-All intervals are pointwise percentile intervals from 5,000 paired draws. Net-return and Sharpe contrasts use 5 bps per side. Negative score differences favor the first model; positive return or Sharpe differences favor it. No model refitting or multiplicity adjustment is applied.
+-
+-\clearpage
+-\subsection{QQQ interval sensitivity}
+-\begingroup\small\setlength{\tabcolsep}{10pt}\begin{longtable}{llrrrr}
+-\caption{QQQ final-period paired intervals}\\
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endfirsthead
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endhead
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 20 & 0.000685 & -0.000358 & 0.001681\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 20 & 0.000564 & -0.000087 & 0.001199\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 20 & -0.000001497 & -0.000004720 & 0.000001770\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 20 & -0.006011 & -0.015178 & 0.003808\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 10 & 0.000685 & -0.000355 & 0.001730\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 10 & 0.000564 & -0.000087 & 0.001229\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 10 & -0.000001497 & -0.000004753 & 0.000001661\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 10 & -0.006011 & -0.015225 & 0.003320\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 60 & 0.000685 & -0.000458 & 0.001639\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 60 & 0.000564 & -0.000170 & 0.001184\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 60 & -0.000001497 & -0.000004661 & 0.000001731\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 60 & -0.006011 & -0.014897 & 0.003538\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 20 & -0.011697 & -0.018679 & -0.004527\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 20 & -0.008221 & -0.013046 & -0.003302\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 20 & 0.000001999 & -0.000002606 & 0.000006942\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 20 & 0.004108 & -0.008712 & 0.017061\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 10 & -0.011697 & -0.018161 & -0.004962\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 10 & -0.008221 & -0.012611 & -0.003660\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 10 & 0.000001999 & -0.000002511 & 0.000006706\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 10 & 0.004108 & -0.008433 & 0.016980\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 60 & -0.011697 & -0.019938 & -0.003985\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 60 & -0.008221 & -0.013995 & -0.002870\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 60 & 0.000001999 & -0.000002466 & 0.000006763\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 60 & 0.004108 & -0.008484 & 0.016499\\
+-\bottomrule\end{longtable}\endgroup
+-All intervals are pointwise percentile intervals from 5,000 paired draws. Net-return and Sharpe contrasts use 5 bps per side. Negative score differences favor the first model; positive return or Sharpe differences favor it. No model refitting or multiplicity adjustment is applied.
+-
+-\clearpage
+-\subsection{IWM interval sensitivity}
+-\begingroup\small\setlength{\tabcolsep}{10pt}\begin{longtable}{llrrrr}
+-\caption{IWM final-period paired intervals}\\
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endfirsthead
+-\toprule Contrast & Metric & Block & Estimate & Lower & Upper\\\midrule\endhead
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 20 & 0.001595 & -0.000140 & 0.003359\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 20 & 0.001031 & -0.000081 & 0.002179\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 20 & -0.000006883 & -0.000012320 & -0.000001741\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 20 & -0.025121 & -0.040317 & -0.010519\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 10 & 0.001595 & -0.000208 & 0.003329\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 10 & 0.001031 & -0.000128 & 0.002157\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 10 & -0.000006883 & -0.000012374 & -0.000001384\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 10 & -0.025121 & -0.040434 & -0.009573\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Log loss} & 60 & 0.001595 & -0.000206 & 0.003324\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Brier} & 60 & 0.001031 & -0.000141 & 0.002160\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Mean net} & 60 & -0.000006883 & -0.000012399 & -0.000001479\\
+-\mbox{$\mathrm{R}-\mathrm{U}$} & \mbox{Sharpe} & 60 & -0.025121 & -0.040968 & -0.010794\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 20 & -0.004942 & -0.008825 & -0.001209\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 20 & -0.003356 & -0.005981 & -0.000856\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 20 & 0.000007276 & 0.000002759 & 0.000012314\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 20 & 0.027767 & 0.014585 & 0.041725\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 10 & -0.004942 & -0.008621 & -0.001282\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 10 & -0.003356 & -0.005806 & -0.000924\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 10 & 0.000007276 & 0.000002605 & 0.000012319\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 10 & 0.027767 & 0.014244 & 0.041688\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Log loss} & 60 & -0.004942 & -0.009043 & -0.000712\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Brier} & 60 & -0.003356 & -0.006148 & -0.000525\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Mean net} & 60 & 0.000007276 & 0.000002033 & 0.000012102\\
+-\mbox{$\mathrm{U}-\mathrm{IID}$} & \mbox{Sharpe} & 60 & 0.027767 & 0.013010 & 0.041379\\
+-\bottomrule\end{longtable}\endgroup
+-All intervals are pointwise percentile intervals from 5,000 paired draws. Net-return and Sharpe contrasts use 5 bps per side. Negative score differences favor the first model; positive return or Sharpe differences favor it. No model refitting or multiplicity adjustment is applied.
+-\clearpage
++\begin{document}
++\title{Supplementary Appendix}\author{}\date{}\maketitle
+ \setcounter{figure}{2}
+-
+-\begin{figure}[!htbp]\centering
+-\includegraphics[width=\linewidth]{../figures/figure3.pdf}
+-\caption{SPY validation-period net wealth at 5 bps per side. These observations were available before the final-period protocol freeze.}\label{fig:validationwealth}
+-\end{figure}
+-
+-\begin{figure}[!htbp]\centering
+-\includegraphics[width=\linewidth]{../figures/figure4.pdf}
+-\caption{SPY validation class-wise calibration. The same ten bins are used as in the final period; marker area increases with count.}\label{fig:validationcalibration}
+-\end{figure}
+-
+-\clearpage
+-\section{Computational verification and limitations}
+-The original analysis used Python 3.12.6, NumPy 2.3.2, pandas 2.3.3, SciPy 1.18.1,
+-yfinance 1.8.0 and exchange\_calendars 4.13.2. State cutpoints are recomputed only
+-from information available at each origin. Missing, duplicate, invalid or
+-non-finite price records are rejected; calendar coverage is checked separately.
+-
+-Fifteen synthetic checks cover a reversible cycle with a known analytic solution,
+-sparse and random count histories, future-data perturbation, known scoring and
+-drawdown values, invalid data, command-line integration, calendar gaps, bootstrap
+-block structure, identical-model contrasts, reproducibility, short samples and
+-undefined Sharpe comparisons. A fresh environment reproduced the saved SPY
+-validation forecasts, calibration, numeric summaries and bootstrap comparisons
+-exactly. This is a validation-period refit, not a claim of a separate exact refit
+-of every final run.
+-
+-A separate arithmetic audit checked all 8,298 asset/target records in the final
+-period. It reconciled origin-specific historical thresholds, next-session timing,
+-target labels, probabilities, weights, turnover, costs, scores, portfolio metrics
+-and calibration with absolute and relative tolerances of $10^{-12}$.
+-Source and evidence fingerprints matched. All saved reversible fits reported
+-convergence; the maximum detailed-balance residual was
+-$2.7755575615628914\times10^{-17}$. These checks do not establish global numerical
+-optimality for every possible input or bootstrap coverage under structural change.
+-
+-Exact probability-bin replication uses round-trip floating-point parsing.
+-Otherwise, a decimal value at a bin boundary can move across the boundary after
+-CSV parsing. This verification detail does not alter the frozen model or outputs.
+-
+-Only code, documentation and cryptographic fingerprints are prepared for public
+-release. Raw or normalized prices, realized daily returns, daily forecasts and
+-local audit logs are excluded from that package. The original data remain subject
+-to third-party terms; the software license of a retrieval library is not a license
+-to redistribute market data. A new authorized download may not match the archived
+-snapshot, and a different licensed source constitutes a new data version.
+-
+-The retained timestamps and hashes document an internal freeze. They are not an
+-external preregistration or an independently witnessed timestamp. The final period
+-was evaluated retrospectively and is now observed. No unreported post-final
+-optimization is justified by the present evidence.
+-
+-OpenAI ChatGPT and Codex assisted with coding, tests, debugging, literature
+-retrieval, explanation and substantive manuscript drafting. Authorship and
+-responsibility for scientific interpretation and verification remain with the
+-human author.
+-\end{document}+\input{appendix_body.tex}
++\end{document}

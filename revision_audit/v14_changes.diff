@@ -1,0 +1,645 @@
+--- v13/analysis/README.md
++++ v14/analysis/README.md
+@@ -3,7 +3,9 @@
+ The pipeline regenerates the derived analysis stages from three price files
+ and the frozen code package, including the secondary families and corrected
+ v12 calibration summaries. Its aggregate verify stage covers the older
+-v7--v9 results only; `revision_audit/check_v12.py` checks the v12 corrections.
++v7--v9 results only; `revision_audit/check_v14.py` checks the current review corrections. Older
++check scripts are retained as historical records and may assert superseded prose
++or solver behavior.
+ The full pipeline was not rerun for this editorial revision.
+ 
+     python -m analysis.pipeline --work out --prices prices --package . --stages all
+@@ -50,10 +52,11 @@
+ Bootstrap: 5,000 paired non-circular moving blocks, length 20, seed 20261113, no
+ refitting. Simulation: seed 20261115, 500 replications per cell. Estimation uses
+ the frozen estimator; where it stops on a line-search precision limit, the same
+-objective is re-solved by BFGS, followed when needed by a Nelder--Mead attempt.
+-The fallback is accepted only when finite, feasible and its gradient infinity
+-norm is at most 2.1e-5. This explicit guard was added in v12; the earlier
+-implementation recorded the norm but did not enforce that final ceiling.
++objective is re-solved over positive simplex flow masses by SLSQP and polished
++using least-squares stationarity equations. The projected-gradient ceiling is
++1e-8. This v13 implementation is unchanged in v14; v14 corrects the outdated
++softmax-gradient description in the manuscript and table note.
++
+ 
+ ## Layout
+ 
+@@ -75,10 +78,10 @@
+ intervals, which are stored rounded to five decimals in the audit files, and 1e-3
+ for p-values, which are stored rounded to three or four decimals.
+ 
+-Earlier revision documentation reports a full run reproducing these archived
+-comparisons. The v12 review did not independently repeat that full run. Its
+-focused tests and calibration recomputation are recorded separately; a future
+-full run may stop if a fallback fit fails the newly enforced numerical guard.
++The v13 record reports a complete run from the retained reconstructed prices.
++The v14 review checked the existing run artifacts and repeated the aggregate
++comparison, without launching a new full model refit or simulation run.
++
+ 
+ ## What the verification does and does not establish
+ 
+@@ -86,3 +89,14 @@
+ the generated aggregate results, within the stated tolerances. It does not establish that the price files are the archived snapshot:
+ the vendor revises history, and the hashes are reported in Appendix B.1 rather
+ than matched.
++
++## Descriptive Sharpe check (v14)
++
++```text
++python -m analysis.sharpe_diagnostic --forecast-root RUN/runs --output moments.json
++```
++
++This reads existing final-period forecasts and computes the mean and sample
++standard deviation of net returns, the conventional Sharpe ratio, and the exact
++symmetric mean/scale decomposition. It does not perform new significance tests
++or identify volatility timing. No row-level data are written to the JSON output.
+--- v13/analysis/sharpe_diagnostic.py
++++ v14/analysis/sharpe_diagnostic.py
+@@ -0,0 +1,47 @@
++"""Descriptive Sharpe decomposition on existing forecast records; no new tests.
++
++python -m analysis.sharpe_diagnostic --forecast-root RUN/runs --output audit.json
++"""
++from pathlib import Path
++import argparse,hashlib,json
++import numpy as np
++import pandas as pd
++
++def symmetric_components(mu_a,sd_a,mu_b,sd_b):
++    if sd_a <= 0 or sd_b <= 0:
++        raise ValueError('Positive standard deviations are required')
++    mean=np.sqrt(252)*(mu_a-mu_b)*(.5/sd_a+.5/sd_b)
++    scale=np.sqrt(252)*(.5*mu_a+.5*mu_b)*(1/sd_a-1/sd_b)
++    return float(mean),float(scale)
++
++def run(forecast_root):
++    rows={}
++    for asset in ('SPY','QQQ','IWM'):
++        files=sorted((Path(forecast_root)/asset).glob('run_*/forecasts.csv'))
++        if not files:raise FileNotFoundError(f'No forecasts for {asset}')
++        path=files[-1]
++        f=pd.read_csv(path);f=f[f.split=='final_test'].reset_index(drop=True)
++        metrics={}
++        for model in ('iid','markov','reversible'):
++            w=f[f'weight_{model}'].to_numpy()
++            net=w*(f.target_intraday_return.to_numpy()-0.001)
++            mu,sd=float(net.mean()),float(net.std(ddof=1))
++            metrics[model]=dict(mean_net=mu,sd_net=sd,sharpe=float(np.sqrt(252)*mu/sd))
++        u,i=metrics['markov'],metrics['iid']
++        mean,scale=symmetric_components(u['mean_net'],u['sd_net'],i['mean_net'],i['sd_net'])
++        delta=u['sharpe']-i['sharpe']
++        if abs(delta-mean-scale)>1e-12:raise AssertionError('Decomposition mismatch')
++        rows[asset]=dict(n=len(f),forecast_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
++            metrics=metrics,sharpe_difference=delta,mean_component=mean,scale_component=scale)
++    return rows
++
++def main():
++    parser=argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--forecast-root',required=True)
++    parser.add_argument('--output',required=True)
++    args=parser.parse_args()
++    out=Path(args.output);out.parent.mkdir(parents=True,exist_ok=True)
++    out.write_text(json.dumps(run(args.forecast_root),indent=2),encoding='utf-8')
++    print('Saved descriptive moments and exact Sharpe components to',out)
++
++if __name__=='__main__':main()
+--- v13/analysis/tables.py
++++ v14/analysis/tables.py
+@@ -109,7 +109,7 @@
+             r" & & [95\% CI] & [95\% CI] & [95\% CI]\\\midrule"]
+     foot = (r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. Each rule re-estimates cut points and state counts as described in Section~\ref{sec:sensitivity}; the common-start rule applies 26 May 2000 to all three assets and leaves IWM unchanged. $\Delta$ net is the paired mean net-return difference at 5 bps per side. Intervals are percentile intervals from 5,000 paired moving blocks of length 20, conditional on the forecasts generated under each rule, without refitting and without multiplicity adjustment. Mean unrestricted levels, which are not comparable across rules, are "
+             + level_text + " for SPY and " + level_text_q + " for QQQ under the five rules in order. Under the fixed and rolling rules the retained solver reaches a line-search precision limit at between "
+-            + f"{100*lo_share:.1f}" + r"\% and " + f"{100*hi_share:.1f}" + r"\% of estimation origins; those points are accepted with gradient infinity norm at most $2.1\times10^{-5}$, and the primary rule never triggers the condition.}")
++            + f"{100*lo_share:.1f}" + r"\% and " + f"{100*hi_share:.1f}" + r"\% of estimation origins; the v13 fallback re-solves the same likelihood on simplex flow masses and accepts only positive finite fits with projected-gradient infinity norm at most $10^{-8}$. The primary rule has no fallbacks; this replaces the older softmax-gradient acceptance rule.}")
+     tail = [r"\bottomrule\end{tabular}", foot, r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+--- v13/README.md
++++ v14/README.md
+@@ -1,42 +1,64 @@
+-# Revised manuscript v13
++# Revised manuscript v14
+ 
+-v13 keeps v12's content and corrects two things: the contribution claims are
+-tighter, and the whole pipeline has now actually been rerun end to end.
++Review-response revision, 16 November 2026. The v13 input archive was not changed.
+ 
+-## What changed relative to v12
++## Deliverables
+ 
+-- **Abstract** cut from 272 to 200 words, reorganised around the three questions a
+-  reader should be able to answer from it: whether the restricted model forecasts
+-  better, which component improves and whether the rule uses it, and what the
+-  economics amount to. The cumulative-loss sentence is replaced by the arithmetic
+-  that produces it — about five basis points of round trip against 0.02 to 0.07
+-  basis points of gain.
+-- **Introduction** gains a paragraph stating what generalises beyond the three
+-  funds: decomposing a proper score along the decision rule's own arguments,
+-  adjusting across contrasts and checking segments before calling an advantage
+-  real, and pricing the action before claiming economic value. The ETF comparison
+-  is presented as the illustration.
+-- **Conclusion** separates the statistical result (conditional, asset-specific,
+-  no reversible advantage under any procedure) from the economic result (an
+-  arithmetic statement about the rule, not a verdict on the models), and closes on
+-  the protocol rather than on the tickers.
+-- **Full reproduction completed.** See `REPRODUCTION.md`: the pipeline was run from
+-  the three price files through every stage. The regenerated forecast panels hash
+-  to exactly the values recorded in v12, all ten generated tables are byte
+-  identical, and the verification stage reports 231 comparisons with 0 mismatches.
+-- **Fallback solver corrected.** v12's acceptance rule rejected a fit whose raw
+-  gradient exceeded 2.1e-5; on the fixed rule that aborted the pipeline. v13 solves
+-  the KKT system on the simplex and checks the projected gradient, which is the
+-  correct stationarity criterion there. No reported number moves.
++- `preprint_review_v14.pdf`: complete 31-page manuscript and appendix.
++- `审稿意见逐条回应_v14.md`: point-by-point review assessment, adopted changes,
++  unsupported suggested changes, and the actual SPY Sharpe decomposition.
++- `revision_audit/v14_changes.diff`: v13-to-v14 textual and code additions.
++- `revision_audit/v14_review_diagnostics.json`: existing-run hash/table checks,
++  231-comparison result and recomputed moments.
++- `revision_audit/v14_sharpe_moments.json`: reproducible descriptive decomposition.
++- `revision_audit/v14_verification.json`: checks and scope of this revision.
+ 
+-## What v13 does not do
++## Review decisions
+ 
+-No new data, no new decision rule, no additional identification. Calibration
+-remains a reference-model diagnostic; bootstrap coverage under structural change
+-remains unproven; the price files are a reconstruction, not the archived snapshot.
++The abstract now qualifies the primary log-loss intervals. The economic
++discussion distinguishes baseline round-trip cost from incremental cost.
++Contribution claims concern an integrated diagnostic template, not a theorem
++for every proper score and decision rule. The probability chain rule is cited.
++Internal bit-exact checks are distinguished from functional reproduction on a
++new vendor retrieval, and repeated preregistration caveats are reduced.
+ 
+-## Files
++The alleged swapped cost columns, missing pi symbols, misplaced Table 9 caption
++and duplicated word were not present in the actual v13 PDF/source. They were not
++introduced as changes. The proposed SPY variance-reduction story was contradicted
++by the saved data: its standard deviation rises 0.46%. An exact descriptive
++decomposition and the limits of its interpretation now appear in Section 4.5.
++The direction of unconditional interval-width changes is not asserted without
++evidence. The existing v13 estimator and frozen code archive are unchanged.
+ 
+-- `REPRODUCTION.md`: command, environment, input hashes, stage-by-stage result.
+-- `revision_audit/v13_changes.diff`: v12 to v13 diff.
+-- `revision_audit/check_v13.py`: checks that the framing claims match the numbers.
++## Build
++
++From the package root:
++
++```text
++tectonic -k source/preprint.tex
++python source/prepare_crossrefs.py
++```
++
++Optional separate print-oriented entry points (external references are numeric,
++without hyperlinks; the combined preprint retains hyperlinks):
++
++```text
++tectonic source/manuscript.tex
++tectonic source/blind_manuscript.tex
++tectonic source/online_appendix.tex
++```
++
++## Check
++
++```text
++python revision_audit/check_v14.py
++python -m analysis.sharpe_diagnostic --forecast-root RUN/runs --output moments.json
++```
++
++NumPy and pandas are needed for the descriptive check. The complete analysis also
++requires the dependencies in `analysis/requirements.txt` and local price inputs.
++See `REPRODUCTION.md` for the earlier full run and what v14 actually verified.
++
++Historical v7--v13 records are retained for provenance. Assertions in old check
++scripts about exact prose or earlier solver implementations are not the current
++v14 acceptance criteria. No raw prices or row-level forecast files are included.
+--- v13/REPRODUCTION.md
++++ v14/REPRODUCTION.md
+@@ -1,3 +1,21 @@
++# Reproduction evidence: v13 run and v14 review
++
++The record below describes the earlier v13 full run. The v14 review did not
++launch another full pipeline. It checked the existing v13 run artifacts, finding
++the three forecast hashes and all ten v13 generated table files consistent with
++the supplied record, and reran the 231 aggregate comparisons with zero mismatches.
++It additionally computed descriptive Sharpe moments and an exact decomposition.
++
++The v14 sensitivity table changes its solver *description* to match the existing
++v13 code; its numerical cells are unchanged. Historical byte-equality statements
++below concern the v13 tables, before this footnote correction. Neither the public
++source package nor a future vendor download alone guarantees bit-exact replay.
++
++The untouched original record is retained in
++`revision_audit/REPRODUCTION_v13_original.md`.
++
++---
++
+ # Full-pipeline reproduction record
+ 
+ Date: 2026-11-16. Package: v13 (identical analysis code to v12 apart from the
+@@ -26,8 +44,9 @@
+ | QQQ.csv | 329,396 | 1e228a8d91fe97a3 |
+ | IWM.csv | 315,253 | 9dc11b1bbfcb6bab |
+ 
+-They are not distributed with the package; they are reproducible from the public
+-vendor endpoint with `analysis/fetch_prices.py` subject to the vendor's terms.
++They are not distributed with the package. `analysis/fetch_prices.py` can retrieve
++a new vendor-series version, subject to the vendor's terms, but cannot guarantee
++identical historical bytes or numerical results.
+ 
+ ## What the run produced
+ 
+--- v13/revision_audit/check_v14.py
++++ v14/revision_audit/check_v14.py
+@@ -0,0 +1,39 @@
++"""Checks of review corrections, saved moments and generated table consistency."""
++from pathlib import Path
++import sys,json,re,math
++ROOT=Path(__file__).resolve().parents[1]
++sys.path.insert(0,str(ROOT))
++from analysis.sharpe_diagnostic import symmetric_components
++
++checks=[]
++def check(name,ok):
++    if not ok:raise AssertionError(name)
++    checks.append(name);print('PASS',name)
++body=(ROOT/'source/body.tex').read_text(encoding='utf-8')
++tables=(ROOT/'source/tables.tex').read_text(encoding='utf-8')
++audit=json.loads((ROOT/'revision_audit/v14_review_diagnostics.json').read_text())
++moments=json.loads((ROOT/'revision_audit/v14_sharpe_moments.json').read_text())
++check('all existing forecast hashes match recorded v12 values',all(r['matches_v12_hash'] for r in audit['assets'].values()))
++check('ten v13 generated tables matched the v13 package',len(audit['table_matches'])==10 and all(audit['table_matches'].values()))
++check('archived verification passed all 231 comparisons',audit['archived_verify_passed'] and '231 comparisons, 0 mismatch(es)' in audit['archived_verify_output'])
++for asset,row in moments.items():
++    check(f'{asset}: independently recomputed descriptive moments match review audit',
++          abs(row['sharpe_difference']-audit['assets'][asset]['sharpe_difference'])<1e-12)
++    u,i=row['metrics']['markov'],row['metrics']['iid']
++    mean,scale=symmetric_components(u['mean_net'],u['sd_net'],i['mean_net'],i['sd_net'])
++    check(f'{asset}: mean and scale components sum to ratio difference',abs(mean+scale-row['sharpe_difference'])<1e-12)
++spy=moments['SPY']
++check('SPY standard deviation increases, not decreases',spy['metrics']['markov']['sd_net']>spy['metrics']['iid']['sd_net'])
++check('SPY negative means imply positive scale contribution here',spy['metrics']['iid']['mean_net']<0 and spy['metrics']['markov']['mean_net']<0 and spy['scale_component']>0)
++check('abstract qualifies primary log-loss intervals','No primary reversible-minus-unrestricted log-loss interval excludes zero.' in body)
++check('no universal score-factorization claim retained','apply to any proper score paired with any decision rule' not in body)
++check('paired-variance correction direction is not asserted','parameter count alone does not determine the direction' in body)
++check('SPY cost columns unchanged and correctly ordered',r'\mbox{31.21\%} & \mbox{-0.47\%} & \mbox{-67.05\%}' in tables)
++check('QQQ cost columns unchanged and correctly ordered',r'\mbox{41.66\%} & \mbox{7.40\%} & \mbox{-64.52\%}' in tables)
++source='\n'.join(p.read_text(encoding='utf-8') for p in (ROOT/'source').rglob('*.tex'))
++labels=set(re.findall(r'\\label\{([^}]+)\}',source))
++refs=set(re.findall(r'\\(?:eqref|ref)\{([^}]+)\}',source))
++cites={x.strip() for g in re.findall(r'\\cite[pt]?(?:\[[^\]]*\])?\{([^}]+)\}',source) for x in g.split(',')}
++bibs=set(re.findall(r'\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}',source))
++check('all source references and citations resolve',refs<=labels and cites<=bibs)
++print(len(checks),'focused v14 checks passed. No new full pipeline run or causal attribution.')
+--- v13/revision_audit/REPRODUCTION_v13_original.md
++++ v14/revision_audit/REPRODUCTION_v13_original.md
+@@ -0,0 +1,80 @@
++# Full-pipeline reproduction record
++
++Date: 2026-11-16. Package: v13 (identical analysis code to v12 apart from the
++fallback solver described below). This record answers the question "was the whole
++experiment rerun from prices with the corrected code?" — it was.
++
++## Command
++
++    python -m analysis.pipeline --work F:\MKV\_work\v13run \
++        --prices F:\MKV\_work\prices \
++        --package . --stages all
++
++Wall time on this machine: about 15 minutes (nine processes, single-threaded).
++
++Environment: Python 3.12.14, numpy 2.3.5, pandas 3.0.1, scipy 1.18.1,
++matplotlib 3.11.2, Tectonic 0.15.0.
++
++## Inputs
++
++Three adjusted daily bars, Date/Open/Close, 1993-01-29 to 2026-02-27 truncated at
++2025-12-31 by the pipeline:
++
++| File | Bytes | SHA-256 (first 16) |
++|---|---|---|
++| SPY.csv | 402,619 | 7974388c7d0723b8 |
++| QQQ.csv | 329,396 | 1e228a8d91fe97a3 |
++| IWM.csv | 315,253 | 9dc11b1bbfcb6bab |
++
++They are not distributed with the package; they are reproducible from the public
++vendor endpoint with `analysis/fetch_prices.py` subject to the vendor's terms.
++
++## What the run produced
++
++| Stage | Output | Result |
++|---|---|---|
++| code | frozen release unpacked | untouched |
++| forecasts | 5,768 / 4,226 / 3,918 rows | SHA-256 **identical** to the hashes recorded in `v12_calibration_recheck.json` |
++| matrices | 13,912 origins | regenerated |
++| scores | components, derivatives, bins, calibration | calibration matches `v12_calibration_recheck.json` to 0.0 |
++| inference | 6 log-loss, 6 Brier, 12 economic contrasts, segments, paths | regenerated |
++| sensitivity | five rules × three assets, 15 panels | regenerated |
++| simulation | 15 cells, 110 solver fallbacks | regenerated |
++| figures | Figures 3 and 4 | regenerated |
++| tables | ten `.tex` files | **byte-identical** to the v12 versions |
++| verify | 231 comparisons | **0 mismatches** |
++
++Two checks matter most. The regenerated forecast panels hash to exactly the values
++v12 recorded, so the reproduction is bit-level for the objects every later number
++depends on. And all ten generated tables are byte-identical to the shipped ones,
++including the sensitivity table, so the corrected solver below moves no reported
++digit.
++
++## Code change relative to v12
++
++v12 tightened the fallback acceptance rule to reject fits whose gradient exceeds
++2.1×10⁻⁵ under the softmax parameterisation. Running the full pipeline under that
++rule aborted at `fixed SPY`: the fallback had stopped at a point whose raw
++gradient was 5.1×10⁻⁵ even though the objective was numerically flat.
++
++v13 replaces the fallback with a simplex formulation that is polished by solving
++the KKT system `grad(m) = lambda, sum(m) = 1` with a least-squares root solver,
++and measures stationarity with the *projected* gradient, which is the correct
++criterion on the simplex. Across the 15 sensitivity panels the fallback now runs
++14 times for SPY's fixed rule and never exceeds a projected gradient of
++1.4×10⁻¹²; no fit is rejected. The fitted matrices are unchanged to display
++precision: every table is byte-identical.
++
++This is a numerical fix, not a change to the estimator or the research design.
++
++## What this reproduction does not establish
++
++- **Bootstrap coverage.** The intervals are still conditional percentile intervals
++  under block resampling; their coverage under structural change is untested.
++- **Data provenance.** The price files are a fresh retrieval of the same series,
++  not the archived snapshot. Row counts and the published estimates match, but the
++  fingerprints differ, as Appendix B.1 explains.
++- **Independent replication.** This is the same code on a reconstructed panel, not
++  a separate implementation on new data.
++- **Calibration.** The parametric bootstrap remains a reference-model diagnostic,
++  not a general test of sequential calibration.
+--- v13/source/appendix_body.tex
++++ v14/source/appendix_body.tex
+@@ -2,7 +2,7 @@
+ \section{Supplementary results}
+ This appendix preserves supporting results from the same frozen experiment.
+ SPY development and validation were examined before final scoring. Their role is
+-design context rather than additional untouched evidence. Tables A1--A4 and the validation figures retain the original results and cost scenarios. Table A5 adds exposure summaries from the retained descriptive audit. Tables A6--A9 report the threshold and window rules, the calendar segments, the controlled simulation and the calibration bin counts; Tables A10--A12 report the secondary inference families and a calibration summary.
++design context. Tables A1--A4 and the validation figures retain the original results and cost scenarios. Table A5 adds exposure summaries from the retained descriptive audit. Tables A6--A9 report the threshold and window rules, the calendar segments, the controlled simulation and the calibration bin counts; Tables A10--A12 report the secondary inference families and a calibration summary.
+ \setcounter{table}{0}
+ \renewcommand{\thetable}{A\arabic{table}}
+ \renewcommand{\theHtable}{appendix.\arabic{table}}
+@@ -178,7 +178,9 @@
+ 
+ \clearpage
+ \section{Computational verification and limitations}
+-This section distinguishes verification reported in the supplied replication record from checks performed for the present editorial revision. The latter checked manuscript--table consistency, corrected the simulation units and calibration point-estimate calculation, added an explicit numerical-acceptance check to the fallback solver, and re-evaluated calibration and score-component summaries on the existing reconstructed forecast files. It did not repeat every model fit, independent-optimizer run or simulation replication described below.
++The v13 reproduction record reports a full run from locally retained reconstructed prices through forecasts, sensitivity analyses, simulation, figures, tables and 231 aggregate comparisons. This revision checked the existing run artifacts: all three forecast hashes match the recorded values, the ten v13 generated tables match their shipped counterparts, and the aggregate verification returns zero mismatches. These are internal reproducibility checks on specified inputs; they do not establish that an external download is bit-identical. The present revision additionally recomputed the SPY Sharpe moments and their exact accounting decomposition. It did not launch another complete pipeline run or repeat the separate independent-optimizer experiment reported below.
++
++The original estimator archive is unchanged. In the v13 sensitivity implementation, a failed original fit triggers simplex optimization of the same likelihood followed by stationarity-equation polishing, with a projected-gradient acceptance ceiling of $10^{-8}$. The older softmax-gradient ceiling is no longer the fallback rule. This numerical change does not supply evidence about bootstrap coverage.
+ 
+ The original analysis used Python 3.12.6, NumPy 2.3.2, pandas 2.3.3, SciPy 1.18.1,
+ yfinance 1.8.0 and exchange\_calendars 4.13.2. State cutpoints are recomputed only
+@@ -215,10 +217,7 @@
+ to redistribute market data. A new authorized download may not match the archived
+ snapshot, and a different licensed source constitutes a new data version.
+ 
+-The retained timestamps and hashes document an internal freeze. They are not an
+-external preregistration or an independently witnessed timestamp. The final period
+-was evaluated retrospectively and is now observed. No unreported post-final
+-optimization is justified by the present evidence.
++The retained timestamps and hashes document the internal sequence of analysis. The design-freeze and retrospective-analysis limitations are stated in Sections~\ref{sec:design} and 5.
+ 
+ \subsection{Reconstructed panel and independent estimator}\label{app:reconstruction}
+ The archived snapshot is not distributed. To test whether the published estimates depend on that particular file, the panel was rebuilt from a fresh retrieval of the same public vendor series, using the adjustment convention of the original adapter, and the unmodified package was rerun. Record counts (8,288, 6,746 and 6,438 through 31 December 2025) and first and last dates match the stored fingerprint, while the normalized-file hashes differ. Historical vendor revisions are a possible explanation; the supplied records do not isolate their contribution. Table~\ref{tab:repro} compares the resulting final-period estimates with the published ones.
+@@ -239,7 +238,7 @@
+ 
+ The reversible estimator was also reimplemented independently. The smoothed likelihood was written in the six flow masses and optimized directly on the simplex by sequential quadratic programming with numerical gradients, in contrast to the softmax parameterization, analytic gradient and BFGS of the retained code. At all 2,766 final-period origins per asset the two solutions agree to $|\Delta\,\text{NLL}|\le7.3\times10^{-12}$ and $|\Delta P|\le2.2\times10^{-8}$ in every fitted entry. Ten random starts per origin, at every twenty-fifth origin, never improved on the retained fit by more than $1.8\times10^{-12}$ nats. The retained fits are therefore taken as numerical optima of the stated objective, without claiming global optimality for the parameterization as such.
+ 
+-Component losses and circulation flows are computed from the reconstructed daily records. Their intervals use the same paired moving-block design, seed and block length as the total-loss intervals, recomputed on component series without refitting. No bootstrap is applied to the circulation path itself, whose first-order autocorrelation of 0.99 makes a short-block interval uninformative; the path is reported descriptively. These additions are an independent recomputation on a rebuilt panel, not a replay of the archived snapshot, and they do not constitute external preregistration or a new out-of-sample test.
++Component losses and circulation flows are computed from the reconstructed daily records. Their intervals use the same paired moving-block design, seed and block length as the total-loss intervals, recomputed on component series without refitting. No bootstrap is applied to the circulation path itself, whose first-order autocorrelation of 0.99 makes a short-block interval uninformative; the path is reported descriptively. These additions recompute the diagnostics on the rebuilt panel rather than replaying the archived snapshot.
+ 
+ OpenAI ChatGPT and Codex assisted with coding, tests, debugging, literature
+ retrieval, explanation and substantive manuscript drafting. Authorship and
+--- v13/source/body.tex
++++ v14/source/body.tex
+@@ -1,5 +1,5 @@
+ \begin{abstract}
+-Detailed balance removes directional cycle flow from a Markov model, trading estimation variance against restriction bias. We evaluate that trade-off for next-session open-to-close return terciles in SPY, QQQ and IWM, using 2,766 forecasts per asset over 2015--2025, common information sets and a fixed intraday rule. The unrestricted model has the lowest log loss and Brier score for each asset, but the evidence is conditional. Across six log-loss contrasts, Romano--Wolf adjusted $p$-values for unrestricted versus IID are 0.093, 0.008 and 0.048; the IWM result is sensitive to the adjustment method and SPY is not significant. No reversible-minus-unrestricted interval excludes zero. A score decomposition places most SPY and QQQ improvement in middle-versus-outer terciles, to which the allocation is locally less sensitive; IWM also improves conditional upper-versus-lower prediction. Mean net gains over IID are 0.043, 0.020 and 0.073 basis points per day, against about five basis points of round-trip cost, so acting costs roughly a hundred times the difference it exploits and the rule's losses follow from arithmetic rather than from model ranking. The advantage is concentrated before 2020 and reverses afterwards. No forecast benefit from detailed balance is demonstrated, and the unrestricted advantage is a conditional finding rather than a stable edge.
++Detailed balance removes directional cycle flow from a Markov model, trading estimation variance against restriction bias. We evaluate this trade-off for next-session open-to-close return terciles in SPY, QQQ and IWM, using 2,766 forecasts per asset over 2015--2025 and a fixed intraday allocation rule. The unrestricted model has the lowest point-estimate log loss and Brier score for each asset. Across six log-loss contrasts, Romano--Wolf adjusted $p$-values for unrestricted versus IID are 0.093, 0.008 and 0.048; IWM is significant at 5\% under stepdown but sensitive to the adjustment method. No primary reversible-minus-unrestricted log-loss interval excludes zero. Exact log-loss factorization places most SPY and QQQ improvement in middle-versus-outer terciles, to which the allocation is locally less sensitive; IWM also improves conditional upper-versus-lower prediction. Mean net gains over IID are 0.043, 0.020 and 0.073 basis points per day, while maintaining near-half exposure costs about five basis points per day under daily liquidation. All nine allocations lose capital at that cost, although their incremental cost differences are small. The unrestricted log-loss advantage is strongest in 2015--2018 and reverses for SPY and QQQ in 2023--2025. The study integrates forecast decomposition, decision sensitivity and cost accounting into a diagnostic template for modest forecasting gains. It demonstrates no forecast benefit from detailed balance in this design and does not evaluate its economic value under turnover-aware alternatives.
+ \end{abstract}
+ 
+ \noindent\textbf{Keywords:} Markov chains; detailed balance; probabilistic forecasting; intraday returns; transaction costs; time reversibility.
+@@ -13,11 +13,11 @@
+ 
+ Time irreversibility also has an established econometric literature, including time-domain, frequency-domain and distribution-based tests \citep{Ramsey1996,Hinich1998,Chen2000}. Financial applications connect irreversibility with volatility asymmetry and alternative time-series representations \citep{Chen2002,Zumbach2009,Lacasa2016}. Finite-state reversible/irreversible decompositions and reversible estimation methods are already available \citep{McCausland2007,Trendelkamp2015}. The contribution here is an empirical evaluation of a restriction, not a new estimator or a test of market-wide reversibility.
+ 
+-What generalises beyond these three funds is not their ranking but three measurement steps that apply to any proper score paired with any decision rule. First, a proper score decomposes along the rule's own arguments, and the derivative of the rule with respect to each component states which kind of improvement could reach a position; score improvement and decision relevance then become separate objects rather than one ordering. Second, an advantage estimated on overlapping expanding windows needs a familywise adjustment and a segment-level stability check, because a full-period mean can average over a reversal. Third, a daily-return identity separates fixed exposure, the probability-driven increment and the cost of acting, which shows whether a score gain is even of the right order of magnitude to matter. These steps are the transferable content; the ETF comparison is the illustration.
++The transferable contribution is an integrated diagnostic template for negative or modest forecasting results. Its components---proper scoring, probability factorization, multiple-testing adjustment, stability analysis and return-cost accounting---are established tools. Here, the log-loss chain rule separates middle-versus-outer prediction from conditional upper-versus-lower prediction; expressing the allocation in the same coordinates then shows which probability changes can affect exposure. This connection helps interpret QQQ's score improvement alongside its lack of a detectable economic improvement under the chosen rule. It is not a general decomposition theorem for every proper score and decision rule, nor does it identify a causal mechanism for the economic outcome.
+ 
+ The design links three comparisons. First, identical historical information within each asset isolates the forecast difference between IID, unrestricted Markov and reversible Markov models. Second, an exact log-loss factorization shows which probability components improve and how the allocation responds to them. Third, a daily-return identity separates fixed half exposure, the probability-driven adjustment and trading cost. Circulation paths, alternative estimation rules and a controlled simulation help interpret the restriction. SPY is the primary application; QQQ and IWM are related-asset extensions rather than independent replications.
+ 
+-The unrestricted chain ranks first on both scores for all three assets, but the statistical evidence depends on the asset and adjustment method. Detailed balance provides no demonstrated log-loss advantage. Under the fixed daily round-trip rule, small incremental gains coexist with large absolute losses at the primary cost. The full-period score ranking also masks deterioration in the later calendar segment. The decompositions, reconstructed-panel checks and simulation are retrospective extensions of the completed experiment; they are exploratory and do not create a new untouched evaluation sample.
++The unrestricted chain ranks first on both scores for all three assets, but the statistical evidence depends on the asset and adjustment method. Detailed balance provides no demonstrated log-loss advantage. Under the fixed daily round-trip rule, small incremental gains coexist with large absolute losses at the primary cost. The full-period score ranking also masks deterioration in the later calendar segment. The decompositions, reconstructed-panel checks and simulation provide exploratory interpretation of the completed experiment.
+ 
+ \section{Design and estimators}\label{sec:design}
+ \subsection{Data, timing and state construction}
+@@ -73,7 +73,7 @@
+ \end{equation}
+ Calibration diagnostics use ten fixed bins per class. Empty bins supply no evidence, and bin averages do not display the full range of forecasts. Appendix~\ref{app:families} reports a count-weighted error, a block-bootstrap interval and a simulation reference that assumes independent outcomes conditional on the frozen probability sequence. That reference is more restrictive than calibration alone.
+ 
+-To distinguish the information rewarded by the score from that used in the allocation, define $m_t=p_{t,2}$ and $q_t=p_{t,3}/(p_{t,1}+p_{t,3})$. Let $z_{t+1}=\mathbf{1}\{y_{t+1}=2\}$ and $u_{t+1}=\mathbf{1}\{y_{t+1}=3\}$. Positivity from smoothing makes these quantities well defined. The log loss factors exactly as
++To distinguish the information rewarded by the score from that used in the allocation, define $m_t=p_{t,2}$ and $q_t=p_{t,3}/(p_{t,1}+p_{t,3})$. Let $z_{t+1}=\mathbf{1}\{y_{t+1}=2\}$ and $u_{t+1}=\mathbf{1}\{y_{t+1}=3\}$. Positivity from smoothing makes these quantities well defined. The standard probability chain rule gives an exact sequential binary factorization of categorical log loss \citep[Chapter~2]{CoverThomas1991}:
+ \begin{equation}
+ \begin{split}
+ \ell_{t+1}={}&-z_{t+1}\log m_t-(1-z_{t+1})\log(1-m_t)\\
+@@ -100,11 +100,11 @@
+ R_{t+1}(c)=G_{t+1}-cT_{t+1}.
+ \label{eq:net}
+ \end{equation}
+-The primary cost is $c=0.0005$ (5 basis points, bps) per side, with sensitivities at 1, 10 and 25 bps. Costs use starting notional, omitting exact exit-notional adjustment, impact and auction slippage. Approximately half exposure implies approximately one unit of turnover daily, even if consecutive weights are unchanged.
++The primary cost is $c=0.0005$ (5 basis points, bps) per side, with sensitivities at 1, 10 and 25 bps. Costs use starting notional, omitting exact exit-notional adjustment, impact and auction slippage. Approximately half exposure implies approximately one unit of turnover daily, even if consecutive weights are unchanged. Even an uninformative forecast therefore incurs the cost of maintaining the baseline position. Within the observed exposure range, total cost is dominated by that baseline; this need not hold for an arbitrary linear mapping or a different exposure range. The experiment compares models under this rule and does not test whether reversibility has economic value under a thresholded or no-trade policy. Such a policy would need to change participation or explicitly allow positions to persist; an overnight-held alternative would also change the return target and risk exposure.
+ 
+ Define $\delta_t=w_t-1/2$. Under the same accounting, the net return separates exactly into
+ \begin{equation}
+-R_{t+1}(c)=\underbrace{\tfrac12(r_{t+1}-2c)}_{\text{fixed half exposure}}
++R_{t+1}(c)=\underbrace{\frac{1}{2}(r_{t+1}-2c)}_{\text{fixed half exposure}}
+ +\underbrace{\delta_t r_{t+1}-2c\delta_t}_{\text{incremental gross return and cost}}.
+ \label{eq:returndecomp}
+ \end{equation}
+@@ -124,7 +124,7 @@
+ 
+ Three families are distinguished: six log-loss contrasts across the three assets, six Brier contrasts, and an exploratory family of twelve economic contrasts comprising six mean net-return and six Sharpe differences. Each family is adjusted separately using aligned block draws across assets and contrasts (Section~\ref{sec:joint}; Appendix~\ref{app:families}). There is no adjustment across the three families. Component, calendar-segment and alternative-rule intervals remain exploratory and pointwise.
+ 
+-Resampling conditions on the saved forecast paths and does not refit thresholds or model parameters. It measures variation in the realized paired loss or return sequences under the dependence assumptions of block resampling, without regenerating estimation or design selection across new histories. Parameter estimation can affect forecast-evaluation inference \citep{West1996}; no general coverage result is asserted for this expanding-window procedure with changing thresholds. Block-length sensitivity does not resolve structural change, and the related ETFs do not provide independent replications.
++Resampling conditions on the saved forecast paths and does not refit thresholds or model parameters. It measures variation in the realized paired loss or return sequences under the dependence assumptions of block resampling, without regenerating estimation or design selection across new histories. Parameter estimation can affect forecast-evaluation inference \citep{West1996}. The present resampling does not assess the bias--variance trade-off across newly estimated forecast histories. It also does not establish that the reported intervals are necessarily narrower than unconditional intervals: estimation effects and their cross-covariances differ across models, so parameter count alone does not determine the direction of the change in uncertainty for a paired loss difference. No general coverage result is asserted for this expanding-window procedure with changing thresholds. Block-length sensitivity does not resolve structural change, and the related ETFs do not provide independent replications.
+ 
+ \section{Results and interpretation}
+ \subsection{Forecast accuracy}
+@@ -174,18 +174,20 @@
+ 
+ QQQ provides a particularly clear contrast. Its unrestricted-minus-IID log-loss gain is largest ($-0.011697$, versus $-0.005314$ for SPY and $-0.004942$ for IWM), yet its primary mean-net-return and Sharpe-difference intervals contain zero; the latter is $[-0.008712,0.017061]$ (Online Appendix Table A3). SPY and IWM have positive primary relative-Sharpe intervals (Tables A2 and A4), despite smaller score gains. These conditional, pointwise comparisons illustrate that score improvements need not rank economic improvements monotonically; they are not a formal test of cross-asset differences, and positive relative Sharpe does not imply positive absolute profitability.
+ 
++For SPY, the unrestricted-minus-IID Sharpe difference is significant in the twelve-contrast economic family ($p=0.032$), whereas the mean net-return difference is not ($p=0.184$), but the unrestricted daily net-return standard deviation is slightly higher: 0.00425030 versus 0.00423084, an increase of 0.46\%. With both mean returns negative, this larger denominator makes the conventional Sharpe ratio less negative; an exact symmetric decomposition assigns 0.015912 of the 0.022689 point-estimate improvement to the mean change and 0.006777 to the inverse-standard-deviation change.\footnote{For $S_M=\sqrt{252}\mu_M/\sigma_M$ and $M\in\{U,I\}$, the symmetric identity is $S_U-S_I=\sqrt{252}\{(\mu_U-\mu_I)(\sigma_U^{-1}+\sigma_I^{-1})/2+(\mu_U+\mu_I)(\sigma_U^{-1}-\sigma_I^{-1})/2\}$. Here $I$ denotes IID and $\sigma_M$ is the sample daily net-return standard deviation. The two terms are descriptive accounting contributions, with no separate significance tests.} These contributions describe the change in the ratio, not the cause of its significance: the paired ratio statistic has a different bootstrap distribution from the mean contrast, and neither the different $p$-values nor the decomposition demonstrates risk reduction or volatility timing.
++
+ \subsection{Threshold and window rules}\label{sec:sensitivity}
+ The primary design re-estimates terciles from every past session at each origin. Table~\ref{tab:sensitivity} repeats the final-period comparison under four alternatives: cut points fixed at their first eligible values, rolling windows of 2,520 and 1,260 sessions applied to both the cut points and the state history, and a common start date of 26 May 2000 for all three assets.
+ 
+-Two features survive every rule. In all fifteen asset-by-rule combinations the average unrestricted-minus-IID loss difference is negative, between $-0.0017$ and $-0.0148$ nats, and the reversible-minus-unrestricted difference is positive. These are directions in the listed designs, not dominance relations between models. For reversible minus unrestricted, the only interval that excludes zero is IWM under fixed cut points, and it favors the unrestricted chain. The fifteen rows are not fifteen independent tests: IWM's common-start row reproduces its primary row by construction, and every rule reuses the same sessions and the same three funds.
++Two features survive every rule. In all fifteen asset-by-rule combinations the average unrestricted-minus-IID loss difference is negative, between $-0.0017$ and $-0.0148$ nats, and the reversible-minus-unrestricted difference is positive. These are directions in the listed designs, not dominance relations between models. For reversible minus unrestricted, the only interval that excludes zero is IWM under fixed cut points, and it favors the unrestricted chain. The rows share sessions and assets; IWM's common-start row reproduces its primary row by construction.
+ 
+ Precision does not survive. The unrestricted-minus-IID interval excludes zero under the primary design and under fixed cut points for all three assets, but under a 2,520-session rolling window it includes zero for QQQ, and under a 1,260-session window it includes zero for all three assets. Shortening SPY's history to a common 2000 start changes its point estimate from $-0.00531$ to $-0.00536$ and widens the interval to include zero. The negative full-period point estimates are robust in direction across these rules, but their precision depends on the estimation history. This design sensitivity is separate from stability across calendar periods.
+ 
+ Absolute log-loss levels refer to different target definitions across rules. With fixed cut points, unrestricted loss falls from 1.0933 to 1.0732 for SPY and from 1.0870 to 1.0306 for QQQ. These reductions can partly reflect a more imbalanced class distribution; they cannot be interpreted as improved forecasting of a common target. Paired differences within each rule remain interpretable as model comparisons for that target definition. Their signs and sensitivity can be compared across rules, but their magnitudes do not measure gains on an identical prediction task.
+ 
+-The economic comparison behaves the same way. The mean net difference stays positive under every rule, between 0.02 and 0.14 basis points per day, and its interval contains zero in four of the fifteen rows while excluding it in the other eleven. The direction of the incremental value is stable across rules; because the rows share sessions and assets, eleven exclusions are not eleven independent findings, and no family-level claim is made.
+-
+-One numerical caveat applies to this table. Under fixed and rolling rules the smoothed likelihood is flatter, and the retained solver stops on a line-search precision limit at between 0.1\% and 4.6\% of estimation origins. Those points have gradient infinity norm at most $2.1\times10^{-5}$ and are accepted here rather than discarded; the primary design never triggers the condition. The numbers in Appendix Table~\ref{tab:sensitivity} therefore rest on a documented acceptance rule that is slightly looser than the one used for the main results.
++The economic comparison behaves the same way. The mean net difference stays positive under every rule, between 0.02 and 0.14 basis points per day, and its interval contains zero in four of the fifteen rows while excluding it in the other eleven. These are pointwise comparisons across overlapping designs, rather than a family-level result.
++
++Under fixed and rolling rules, the original optimizer reaches a line-search precision limit at 0.1\%--4.6\% of estimation origins. The v13 reproduction handles these cases by optimizing the same smoothed likelihood over simplex flow masses and polishing the stationarity equations. Acceptance requires positive finite flows and a projected-gradient infinity norm at most $10^{-8}$; this replaces the earlier softmax-gradient acceptance rule. The primary rule has no fallbacks. The saved v13 results reproduce the reported sensitivity estimates to their displayed precision; Appendix B distinguishes this numerical reproduction from statistical validation.
+ 
+ \subsection{Time stability within the final period}\label{sec:stability}
+ Table~\ref{tab:segments} divides the final period into three calendar segments selected for this retrospective revision, and reports both contrasts within each. The unrestricted advantage is not uniform. It is largest in 2015--2018, when all three intervals exclude zero ($-0.0118$, $-0.0299$ and $-0.0079$ for SPY, QQQ and IWM), weakens in 2019--2022, and in 2023--2025 changes sign for SPY and QQQ ($+0.0046$ and $+0.0111$, the latter with an interval excluding zero) while remaining essentially zero for IWM. The QQQ gap in the first segment is two and a half times its full-period estimate.
+@@ -204,7 +206,7 @@
+ At 5,000 states, the stronger-circulation scenario produces a cost of approximately $1.3\times10^{-3}$ nats, of the same order as the empirical contrasts. This is an order-of-magnitude comparison: the simulation grid does not include the exact initial empirical training lengths of 5,522, 3,980 and 3,672 observations, and the weaker scenario is closer to QQQ's fitted circulation. The scenarios were selected after seeing the empirical results and omit the changing-threshold layer. They illustrate the bias--variance trade-off under stated generating processes; they neither identify the source of the observed ranking nor independently confirm it.
+ 
+ \subsection{Interpretation of the restriction}
+-The score decomposition identifies which forecasting errors change, the circulation path describes which fitted flow detailed balance removes, and the simulation isolates a bias--variance trade-off under known truth. None of these analyses establishes that population irreversibility causes the empirical score gap. The highly persistent fitted circulation reuses an expanding history, the total log-loss intervals include zero, and the simulation was calibrated retrospectively. Likewise, the overnight-return literature does not explain IWM's intraday losses without an overnight decomposition or a causal design. The computational checks in Appendix B assess implementation and numerical agreement, not empirical power or economic identification.
++The score decomposition identifies which forecasting errors change, the circulation path describes which fitted flow detailed balance removes, and the simulation isolates a bias--variance trade-off under known truth. None of these analyses establishes that population irreversibility causes the empirical score gap. The highly persistent fitted circulation reuses an expanding history, the primary reversible-minus-unrestricted log-loss intervals include zero, and the simulation was calibrated retrospectively. Likewise, the overnight-return literature does not explain IWM's intraday losses without an overnight decomposition or a causal design. The computational checks in Appendix B assess implementation and numerical agreement, not empirical power or economic identification.
+ 
+ \section{Limitations and conclusion}
+ The evidence is conditional on three related US equity ETFs, three return states, first-order dependence and the stated estimation rules. Changing terciles discard return magnitudes and relabel history across origins. Alternative thresholds and windows preserve the direction of the full-period comparisons but reduce precision in several cases. Calendar segments show a more substantive limitation: the unrestricted advantage is concentrated in the earlier period and reverses for SPY and QQQ in 2023--2025. The full-period mean should not be interpreted as a stable forecasting edge.
+@@ -213,14 +215,16 @@
+ 
+ Inference is conditional on saved forecasts, with unproven coverage under structural change and conventional Sharpe scaling that does not correct for serial dependence. Separate adjustments cover the log-loss, Brier and economic families; they do not control multiplicity across all analyses. Component, segment and alternative-rule intervals remain pointwise. The calibration simulation imposes independent draws from a frozen forecast sequence and therefore is not a general test of sequential calibration. The internal design freeze is not external preregistration, and retrospective diagnostics do not supply new out-of-sample evidence. Any selection of a new allocation or estimation rule requires a separately declared evaluation.
+ 
+-Within these limits, the unrestricted model achieves modest average score gains over IID. Log-loss evidence is consistent across the reported familywise procedures for QQQ, sensitive to the procedure for IWM, and not significant for SPY after adjustment; most of the gain comes from 2015--2018 and the sign reverses in 2023--2025. The defensible claim is conditional and asset-specific rather than a stable forecasting edge, and no reversible advantage is detected under any procedure. For SPY and QQQ, most score improvement concerns middle-versus-outer probabilities, whereas the fixed allocation is locally more responsive to the conditional upper-versus-lower probability.
+-
+-The economic result is arithmetic rather than a verdict on the models. A round trip costs about five basis points per session at the primary rate while the better forecast adds 0.02 to 0.07 basis points per day, so acting on these probabilities costs roughly two orders of magnitude more than the probability difference it exploits. That is why every model loses capital under this rule. It also reframes the question from whether the rule is profitable to whether a score gain is of an appropriate order of magnitude for the decision at all.
+-
+-What generalises is the protocol rather than the tickers: decompose the score along the rule's arguments, adjust across contrasts and check stability across segments before calling an advantage real, and price the action before claiming economic value. Applying the same protocol to other assets will produce other conditional answers; treating one asset's result as the general one is precisely the inference this design cannot support.
++Within these limits, the unrestricted model achieves modest average score gains over IID. Log-loss evidence is consistent across the reported familywise procedures for QQQ, sensitive to the procedure for IWM, and not significant for SPY after adjustment. The advantage is strongest in 2015--2018 and reverses for SPY and QQQ in 2023--2025. All primary reversible-minus-unrestricted log-loss intervals contain zero; the exploratory fixed-cutpoint and early-period IWM exclusions favor the unrestricted model. No forecast advantage from detailed balance is demonstrated, and non-rejection does not establish equivalence.
++
++The economic conclusion is specific to the decision rule. Daily liquidation makes maintaining near-half exposure costly even with uninformative probabilities. Total costs of about five basis points per day coexist with unrestricted-minus-IID net improvements of 0.02--0.07 basis points per day, but this scale comparison must not be read as the incremental cost of choosing the unrestricted forecast: mean cost differences between the two models are below 0.005 basis points per day. Absolute losses reflect realized gross returns, the baseline cost and compounding. They do not establish that a turnover-aware alternative would fail.
++
++The contribution is the integrated diagnostic template: connect an available score factorization to the decision rule's sensitivity, assess multiplicity and time stability, and separate baseline exposure from incremental return and cost. The exact log-loss factorization provides that connection in this application. Transfer to another score, rule or holding period requires its own mathematical and empirical assessment.
+ 
+ \section*{Data and Code Availability Statement}
+-The accompanying replication supplement contains analysis code, synthetic tests, protocol documentation and source/data SHA-256 fingerprints. Its README documents environment setup, release verification and replay using locally supplied Date, Open and Close data. Third-party raw prices and row-level price-derived outputs are excluded. The archived data file is not distributed, although identifying fingerprints for it are published in the code package; a new download will not match those hashes byte for byte. The supplied replication record reports a reconstruction of the daily panel from a fresh retrieval of the same vendor series using the supplied code: row counts and date ranges match the archived fingerprint exactly, and the final-period log loss is reproduced to six decimals for SPY and IWM and to within $3\times10^{-6}$ for QQQ, without identifying which records account for that difference. The realized open-to-close returns that the models classify are invariant to a same-session adjustment factor, which can explain differing price-file hashes without differing intraday returns. Exact equality of model outputs still depends on whether any return ratios or labels changed. Appendix~B documents the reconstruction and the independent estimator. The release candidate has no permanent public repository or DOI at the time of this revision. The manuscript source package also provides the aggregate inputs and arithmetic used for the additional descriptive table. Online Appendix B distinguishes the original verification evidence from these arithmetic additions.
++The replication supplement contains analysis code, aggregate results and SHA-256 fingerprints; third-party prices and row-level price-derived outputs are not distributed. Two forms of reproducibility are distinguished. Internal bit-exact auditability concerns rerunning the specified code on the same locally retained reconstructed price inputs: the v13 record reports identical forecast-file hashes and ten identical generated table files, which were checked against the existing local run artifacts for this revision. These checks do not make the inputs publicly available or establish independent replication.
++
++External functional reproducibility concerns approximate agreement after a new authorized retrieval of the vendor series. The supplied reconstruction matches the archived row counts and dates, with published log loss reproduced to six decimals for SPY and IWM and within $3\times10^{-6}$ for QQQ; the QQQ unrestricted-minus-IID contrast differs by $2\times10^{-6}$ (Appendix~\ref{app:reconstruction}). A future download is not guaranteed to reproduce those tolerances or hashes. Common same-session adjustments cancel in $C/O$, whereas revisions to that ratio can change thresholds and labels. The archived snapshot is not distributed, and the release candidate has no permanent public repository or DOI. The supplement records which checks were rerun and which verification claims are inherited from earlier records.
+ 
+ \ifblind\else
+ \section*{Funding}
+--- v13/source/references.tex
++++ v14/source/references.tex
+@@ -5,6 +5,7 @@
+ \bibitem[Campbell and Thompson(2008)]{Campbell2008} Campbell, J. Y., and Thompson, S. B. (2008). Predicting Excess Stock Returns Out of Sample: Can Anything Beat the Historical Average? \textit{Review of Financial Studies}, 21, 1509--1531. \url{https://doi.org/10.1093/rfs/hhm055}.
+ \bibitem[Chen et al.(2000)]{Chen2000} Chen, Y.-T., Chou, R. Y., and Kuan, C.-M. (2000). Testing time reversibility without moment restrictions. \textit{Journal of Econometrics}, 95, 199--218. \url{https://doi.org/10.1016/S0304-4076(99)00036-6}.
+ \bibitem[Chen and Kuan(2002)]{Chen2002} Chen, Y.-T., and Kuan, C.-M. (2002). Time irreversibility and EGARCH effects in US stock index returns. \textit{Journal of Applied Econometrics}, 17, 565--578. \url{https://doi.org/10.1002/jae.692}.
++\bibitem[Cover and Thomas(1991)]{CoverThomas1991} Cover, T. M., and Thomas, J. A. (1991). \textit{Elements of Information Theory}. Wiley, Chapter 2. \url{https://doi.org/10.1002/0471200611}.
+ \bibitem[Diebold and Mariano(1995)]{Diebold1995} Diebold, F. X., and Mariano, R. S. (1995). Comparing Predictive Accuracy. \textit{Journal of Business and Economic Statistics}, 13, 253--263. \url{https://doi.org/10.1080/07350015.1995.10524599}.
+ \bibitem[Gneiting and Raftery(2007)]{Gneiting2007} Gneiting, T., and Raftery, A. E. (2007). Strictly Proper Scoring Rules, Prediction, and Estimation. \textit{Journal of the American Statistical Association}, 102, 359--378. \url{https://doi.org/10.1198/016214506000001437}.
+ \bibitem[Granger and Pesaran(2000)]{Granger2000} Granger, C. W. J., and Pesaran, M. H. (2000). Economic and statistical measures of forecast accuracy. \textit{Journal of Forecasting}, 19, 537--560. \url{https://doi.org/10.1002/1099-131X(200012)19:7<537::AID-FOR769>3.0.CO;2-G}.
+--- v13/source/tables/tab_sensitivity.tex
++++ v14/source/tables/tab_sensitivity.tex
+@@ -21,5 +21,5 @@
+ IWM & Rolling 1,260 & $-$0.0024 [$-$0.0067, $+$0.0019] & $+$0.0015 [$-$0.0013, $+$0.0045] & 0.109 [$+$0.001, $+$0.222]\\
+ IWM & Common start & $-$0.0049 [$-$0.0088, $-$0.0012] & $+$0.0016 [$-$0.0001, $+$0.0034] & 0.073 [$+$0.028, $+$0.123]\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. Each rule re-estimates cut points and state counts as described in Section~\ref{sec:sensitivity}; the common-start rule applies 26 May 2000 to all three assets and leaves IWM unchanged. $\Delta$ net is the paired mean net-return difference at 5 bps per side. Intervals are percentile intervals from 5,000 paired moving blocks of length 20, conditional on the forecasts generated under each rule, without refitting and without multiplicity adjustment. Mean unrestricted levels, which are not comparable across rules, are 1.0933, 1.0732, 1.0939, 1.0969, 1.0932 for SPY and 1.0870, 1.0306, 1.0937, 1.0939, 1.0883 for QQQ under the five rules in order. Under the fixed and rolling rules the retained solver reaches a line-search precision limit at between 0.1\% and 4.6\% of estimation origins; those points are accepted with gradient infinity norm at most $2.1\times10^{-5}$, and the primary rule never triggers the condition.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. Each rule re-estimates cut points and state counts as described in Section~\ref{sec:sensitivity}; the common-start rule applies 26 May 2000 to all three assets and leaves IWM unchanged. $\Delta$ net is the paired mean net-return difference at 5 bps per side. Intervals are percentile intervals from 5,000 paired moving blocks of length 20, conditional on the forecasts generated under each rule, without refitting and without multiplicity adjustment. Mean unrestricted levels, which are not comparable across rules, are 1.0933, 1.0732, 1.0939, 1.0969, 1.0932 for SPY and 1.0870, 1.0306, 1.0937, 1.0939, 1.0883 for QQQ under the five rules in order. Under the fixed and rolling rules the retained solver reaches a line-search precision limit at between 0.1\% and 4.6\% of estimation origins; the v13 fallback re-solves the same likelihood on simplex flow masses and accepts only positive finite fits with projected-gradient infinity norm at most $10^{-8}$. The primary rule has no fallbacks; this replaces the older softmax-gradient acceptance rule.}
+ \end{table}
+--- v13/审稿意见逐条回应_v14.md
++++ v14/审稿意见逐条回应_v14.md
+@@ -0,0 +1,85 @@
++# 对 v13 审稿意见的逐条核对与 v14 修改说明
++
++日期：2026年11月16日。核对对象：用户提供的 v13 ZIP、其中的实际 PDF 与源码，以及同目录既有的 v13run 运行产物。原始 ZIP 未修改。
++
++## 核心判断
++
++这份意见抓住了真实的解释与范围问题，但不能直接照单全收。主要需要防止两种情况：把 PDF 文本提取错误误认成论文排版错误，以及把未经验证的机制解释写进论文。v14 采纳有效建议，并给出可以由既有数据核对的替代解释。
++
++三项最重要的核对结果：
++
++1. **表5没有颠倒。** v13实际PDF第14页与源码均为：SPY unrestricted 在1 bps下为−0.47%，5 bps下为−67.05%；QQQ分别为7.40%和−64.52%。若按该意见交换两列，反而会引入错误。
++2. **SPY并未降低收益标准差。** unrestricted 的日净收益标准差从IID的0.0042308373升至0.0042502986，增幅0.459986%。因此不能将 Sharpe 改善解释成降低波动或在高波动日降低仓位。
++3. **v13已有全流程复现记录。** 本轮读取已有运行产物，三个预测文件SHA-256均与留存记录相符，10个v13生成表与v13源码逐字节一致，重新执行汇总核对得到231项比较、0个不匹配。这是内部指定输入上的复现证据，不是外部独立复现，也不保证以后重新下载的价格具有相同哈希。
++
++## 四项主要意见
++
++| 意见 | 处理 | 理由与修改位置 |
++|---|---|---|
++| 1. 条件bootstrap遗漏重新估计不确定性，因此区间必然或很可能偏窄 | 接受局限，未采纳方向判断 | 第3.3节明确现有重采样不评估新历史下重新估计带来的不确定性；但配对损失差的修正还包括模型间与估计误差间的协方差，不能仅凭多一个自由参数断言区间一定更窄，也不能量化为“略窄”。West (1996)第1072页的定理4.1显式包含交叉协方差项。此一般理由不是对本文非光滑动态阈值程序的覆盖率证明。 |
++| 2. 每日清仓使基准半仓付出大量成本，经济设计范围有限 | 接受并收紧 | 第3.2节、结论明确成本主要来自近半仓基准暴露，实验只比较既定规则；阈值/不交易规则或持仓跨日需要单独设计。跨日还会改变收益目标与风险；仅对日内权重设置“变化死区”并不能自动消除清仓后的每日往返成本。 |
++| 3. “没有区间排除零”过度概括；可复现性需分层 | 接受 | 摘要改为“no primary ... log-loss interval”；结论同时承认固定阈值IWM和早期IWM的探索性区间有排除零情况，方向均有利于U。数据声明区分内部bit-exact检查与外部functional reproduction。外部误差写为已观察的精度，未承诺未来下载达到10⁻⁶。 |
++| 4. 贡献应是组合诊断方法，而不是新统计工具 | 接受并进一步修正 | 引言及结论定位为用于微弱/负面预测结果的 integrated diagnostic template。明确链式分解是标准恒等式；其价值在于与本规则的局部敏感度连接。删去“任何proper score与任何decision rule都可如此分解”的过强主张，也不把相关模式写成收益机制的因果识别。 |
++
++有关条件推断的依据：West (1996), [Asymptotic Inference about Predictive Ability](https://economia.uc3m.es/jgonzalo/teaching/PhdTimeSeries/WestForecasting.pdf)，第1072页、定理4.1。新增的信息论出处为 [Cover & Thomas (1991), Elements of Information Theory](https://onlinelibrary.wiley.com/doi/book/10.1002/0471200611)，第2章。
++
++## 九项细节意见
++
++| 编号 | 核对结果 | v14处理 |
++|---|---|---|
++| 1：表5的1/5 bps列颠倒 | 不成立；实际PDF及源码顺序正确 | 保留全部数值与列序；增加自动检查防止错误交换 |
++| 2：表7、A6、A11跨行错位 | 实际PDF没有所描述的数值/区间错位；表A6较密但各行可辨 | 检查原页与新生成PDF，保留正确表格结构，不按文本抽取顺序重新排列数据 |
++| 3：式(11)的1/2与δ损坏 | 原PDF可见1/2和δ；提取文本不等同于渲染 | 将较小的tfrac改为显示式frac，增强半仓系数可读性；恒等式不变 |
++| 4：两处π缺失 | 源码均有π，实际PDF中也存在 | 保留，不重复插入符号 |
++| 5：出现“sequ sequences” | v13源码与实际附录A.5没有该重复词 | 无需改字 |
++| 6：表9标题在表格下方 | 原PDF第15页标题位于表格上方 | 保留 |
++| 7：U−IID、R−U等字符碰撞 | 源码使用数学减号，实际PDF中ticker和contrast分列清楚 | 检查表9、A10、A11渲染；未按乱码抽取文本重写正确表格 |
++| 8：得分分解缺少标准出处 | 接受 | 在式(7)前明确标准概率链式法则/顺序二元分解，新增Cover–Thomas文献；未把恒等式等同于额外的nested-logit结构模型 |
++| 9：SPY的Sharpe显著性来自方差下降 | 数据反驳该机制 | 新增第4.5节三句说明及精确分解脚注，报告标准差上升；不从两个不同p值推断降风险或波动择时 |
++
++## SPY Sharpe：实际查到的是什么
++
++沿用论文成本与Sharpe定义，使用既有2,766个最终评价日，未重新挑选策略或时期。
++
++| 量 | IID | Unrestricted |
++|---|---:|---:|
++| 日净收益均值 | −0.0003965691 | −0.0003923185 |
++| 日净收益标准差 | 0.0042308373 | 0.0042502986 |
++| √252缩放的Sharpe | −1.4879652 | −1.4652767 |
++
++净收益均值的差为+0.0425055 bps/日，Sharpe的差为+0.0226885。由于两组均值均为负，更大的标准差会让该Sharpe比率变得没那么负；这不是风险下降。
++
++对 S=√252·μ/σ，采用交换两模型时对称的精确代数分解：
++
++ΔS = √252 · [ (μU−μI)(1/σU+1/σI)/2 + (μU+μI)(1/σU−1/σI)/2 ]。
++
++- 均值变化项：+0.01591195。
++- 标准差倒数变化项：+0.00677659。
++- 两项之和：+0.02268853，与实际Sharpe差一致。
++
++这是点估计的会计式分解，不是因果分解，也没有对两项分别新增显著性检验。Sharpe比率和均值差具有不同的配对bootstrap分布；仅凭前者p=0.032、后者p=0.184，不能把显著性差异归因于某个收益矩。v14保留这一界限。
++
++## 对Claim Table的补充纠偏
++
++- Claim 1、2、4、5、8的主要数值与留存表格一致；IWM应称“stepdown达到5%，但对校正方法敏感”，而不是在该方法下也未达到阈值。
++- Claim 3确实需要primary和log-loss限定，已修改。
++- Claim 6中的−0.8至−1.4是各资产的期间平均循环流量量级，不是所有日值的范围；正文仍报告实际最小值、最大值和自相关。没有新增总体j=0检验。
++- Claim 7的量级比较成立，但约5 bps是维持整个半仓日内规则的总成本，不是从IID改用U的额外成本。模型间平均成本差小于0.005 bps/日；v14明确避免把两者混用。
++- Claim 9不宜按“精确实证训练长度”归为完全支持。模拟网格并未包含5,522、3,980、3,672；仅支持量级比较。v13已有的这一限定予以保留。
++- Claim 10中的一般“校准被拒绝、由边际漂移导致”不是v13实际附录的表述。附录已明确更强的独立参考模型及归因限制，保留准确写法。
++- Claim 11应分层判断：PDF和公开包不含原始价格，无法单靠公开包验证bit-exact；但本地指定输入的复现有运行记录和哈希证据。本轮已检查已有产物，不能一概写成不存在内部支持。
++
++## 另外发现并修正的版本不一致
++
++v13已把备用求解器换成单纯形参数化、KKT方程精化与投影梯度检查，但正文第4.6节、表A6脚注及analysis/README仍沿用旧的2.1×10⁻⁵ softmax梯度描述。v14将它们更新为现有代码的10⁻⁸投影梯度上限，**未改动v13求解器或估计器**。已有15个敏感性面板总计767次fallback，所记录的最大投影梯度约1.82×10⁻¹²；这些是运行产物的诊断，不等于全局最优性证明。
++
++已删除重复的预注册/新样本警告，只在方法和局限保留明确说明；保留各项分析必要的探索性标识。成本只取决于基准暴露并不保证任何资产、任何期间都会亏损，因此也删改了v13摘要中“损失纯由算术推出”的过强表述。
++
++## 验证与交付范围
++
++- 完整稿、单独正文、匿名正文和单独附录四个入口已编译；完整31页PDF逐页渲染检查。
++- 17项本轮针对性检查通过；既有运行的231项汇总核对通过；三个预测文件哈希、10个v13表格文件匹配。
++- 新增可重复运行的`analysis/sharpe_diagnostic.py`和聚合JSON；不分发逐行市场数据。
++- 本轮未重新启动整个全流程、未新增bootstrap假设检验、未测试交易死区或跨日策略、未证明条件bootstrap覆盖率。表内研究结果未改动；表A6脚注按现有求解器纠正。
++
++对于“Ready after minor corrections”的评价：本轮修订使稿件的结论与证据更加一致，但不能由一份审稿意见推导出期刊录用保证。尤其不能用尚未实施的周转感知策略、外部样本或一般校准检验来强化结论。

@@ -1,0 +1,22 @@
+\begin{table}[!htbp]\centering\footnotesize\setlength{\tabcolsep}{2pt}
+\caption{Benchmark layers under the threshold and window rules}\label{tab:layerrules}
+\begin{tabular}{llrrrrr}\toprule
+Asset & Rule & V share & $|w^{\mathrm V}-\tfrac12|$ & Direction & Weighted direction & Direction net\\
+ & & (\%) & & ($10^{-3}$ nats) & ($10^{-3}$) & (bps/day)\\\midrule
+SPY & Primary & 82 & 0.00002 & $+$0.04 [$-$1.04, $+$1.05] & $-$0.77 [$-$2.29, $+$0.65] & $+$0.043 [$+$0.001, $+$0.087]\\
+SPY & Fixed & 77 & 0.01322 & $+$0.32 [$-$0.73, $+$1.30] & $-$0.68 [$-$2.14, $+$0.64] & $+$0.038 [$-$0.000, $+$0.082]\\
+SPY & Roll 2,520 & 89 & 0.00014 & $+$0.28 [$-$1.23, $+$1.74] & $-$0.63 [$-$2.72, $+$1.28] & $+$0.042 [$-$0.010, $+$0.098]\\
+SPY & Roll 1,260 & 108 & 0.00026 & $-$0.41 [$-$2.29, $+$1.46] & $-$1.96 [$-$4.45, $+$0.36] & $+$0.082 [$+$0.018, $+$0.148]\\
+\midrule
+QQQ & Primary & 82 & 0.00003 & $-$0.07 [$-$1.12, $+$1.00] & $-$0.14 [$-$1.47, $+$1.12] & $+$0.020 [$-$0.026, $+$0.069]\\
+QQQ & Fixed & 79 & 0.01376 & $-$0.22 [$-$1.13, $+$0.68] & $-$0.77 [$-$1.93, $+$0.33] & $+$0.043 [$+$0.002, $+$0.089]\\
+QQQ & Roll 2,520 & 56 & 0.00014 & $-$0.43 [$-$2.17, $+$1.50] & $-$1.92 [$-$4.41, $+$0.69] & $+$0.115 [$+$0.021, $+$0.207]\\
+QQQ & Roll 1,260 & 56 & 0.00026 & $-$0.54 [$-$2.88, $+$1.73] & $-$1.97 [$-$5.24, $+$1.07] & $+$0.144 [$+$0.030, $+$0.267]\\
+\midrule
+IWM & Primary & 66 & 0.00003 & $-$1.31 [$-$2.41, $-$0.24] & $-$1.44 [$-$2.65, $-$0.29] & $+$0.073 [$+$0.028, $+$0.123]\\
+IWM & Fixed & 73 & 0.00269 & $-$0.78 [$-$1.70, $+$0.10] & $-$1.24 [$-$2.35, $-$0.25] & $+$0.058 [$+$0.018, $+$0.103]\\
+IWM & Roll 2,520 & 56 & 0.00014 & $-$1.76 [$-$3.66, $+$0.06] & $-$2.18 [$-$4.38, $-$0.11] & $+$0.116 [$+$0.036, $+$0.202]\\
+IWM & Roll 1,260 & 69 & 0.00026 & $-$0.66 [$-$3.17, $+$1.75] & $-$1.12 [$-$4.12, $+$1.77] & $+$0.109 [$+$0.001, $+$0.222]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize V share is $(\bar\ell^{\mathrm V}-\bar\ell^{\mathrm{IID}})/(\bar\ell^{\mathrm U}-\bar\ell^{\mathrm{IID}})$ in percent. The second column is the mean of $|w^{\mathrm V}_t-\tfrac12|$. The direction column, $\mathrm{U}-\mathrm{M}$, is the paired difference in the conditional upper-versus-lower term of Equation~\eqref{eq:scorefactor}; it equals the total $\mathrm{U}-\mathrm{M}$ log-loss difference. The weighted column multiplies that term on each outer-tercile day by $|r_{t+1}|$ divided by the mean of $|r_{t+1}|$ over outer-tercile days; it is a magnitude-weighted diagnostic, not a proper score for the tercile event. Net returns use 5 bps per side. Each rule labels history with its own cut points, as in Table~\ref{tab:sensitivity}. Under fixed cut points the marginal upper share departs from one-half, so V, M and IID all carry a common tilt. Intervals are pointwise percentile intervals from 5,000 paired moving blocks of length 20 without refitting; rows share sessions and assets.}
+\end{table}

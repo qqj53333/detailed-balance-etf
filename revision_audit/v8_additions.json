@@ -1,0 +1,363 @@
+{
+  "design": {
+    "primary": "expanding history, training-only terciles re-estimated at each origin, minimum 2,520 observations",
+    "fixed": "cut points frozen at first eligible origin; state history expanding",
+    "roll2520": "rolling 2,520 sessions for both cut points and state history",
+    "roll1260": "rolling 1,260 sessions for both cut points and state history",
+    "common": "expanding history from 26 May 2000 for all assets"
+  },
+  "solver_note": "package estimator used first; where it raised a line-search precision-limit error the same BFGS path was reproduced and accepted when the gradient infinity norm was at most 2.1e-5",
+  "fallback_share": {
+    "SPY": {
+      "fixed": 14,
+      "roll2520": 7,
+      "roll1260": 107
+    },
+    "QQQ": {
+      "fixed": 194,
+      "roll2520": 11,
+      "roll1260": 121
+    },
+    "IWM": {
+      "fixed": 75,
+      "roll2520": 8,
+      "roll1260": 48
+    }
+  },
+  "table": [
+    {
+      "asset": "SPY",
+      "rule": "primary",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.093333,
+      "du": -0.005314,
+      "du_ci": [
+        -0.009963,
+        -0.000713
+      ],
+      "dr": 0.001315,
+      "dr_ci": [
+        -0.000422,
+        0.003131
+      ],
+      "net_bp": 0.04251,
+      "net_ci": [
+        0.00115,
+        0.08744
+      ]
+    },
+    {
+      "asset": "SPY",
+      "rule": "fixed",
+      "n": 2766,
+      "fallback_origins": 14,
+      "mean_logloss_unrestricted": 1.073163,
+      "du": -0.008483,
+      "du_ci": [
+        -0.013749,
+        -0.003465
+      ],
+      "dr": 0.001558,
+      "dr_ci": [
+        -0.000173,
+        0.003336
+      ],
+      "net_bp": 0.04523,
+      "net_ci": [
+        0.00329,
+        0.09136
+      ]
+    },
+    {
+      "asset": "SPY",
+      "rule": "roll2520",
+      "n": 2766,
+      "fallback_origins": 7,
+      "mean_logloss_unrestricted": 1.093859,
+      "du": -0.004767,
+      "du_ci": [
+        -0.009029,
+        -0.000461
+      ],
+      "dr": 0.000593,
+      "dr_ci": [
+        -0.001017,
+        0.002231
+      ],
+      "net_bp": 0.04165,
+      "net_ci": [
+        -0.01032,
+        0.09852
+      ]
+    },
+    {
+      "asset": "SPY",
+      "rule": "roll1260",
+      "n": 2766,
+      "fallback_origins": 107,
+      "mean_logloss_unrestricted": 1.09685,
+      "du": -0.001744,
+      "du_ci": [
+        -0.005675,
+        0.002756
+      ],
+      "dr": 8e-06,
+      "dr_ci": [
+        -0.001956,
+        0.002065
+      ],
+      "net_bp": 0.08212,
+      "net_ci": [
+        0.01797,
+        0.14774
+      ]
+    },
+    {
+      "asset": "SPY",
+      "rule": "common",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.093248,
+      "du": -0.005358,
+      "du_ci": [
+        -0.010793,
+        5.9e-05
+      ],
+      "dr": 0.001074,
+      "dr_ci": [
+        -0.000721,
+        0.002916
+      ],
+      "net_bp": 0.03781,
+      "net_ci": [
+        -0.00129,
+        0.07943
+      ]
+    },
+    {
+      "asset": "QQQ",
+      "rule": "primary",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.086974,
+      "du": -0.011699,
+      "du_ci": [
+        -0.018681,
+        -0.004532
+      ],
+      "dr": 0.000685,
+      "dr_ci": [
+        -0.000358,
+        0.001681
+      ],
+      "net_bp": 0.02,
+      "net_ci": [
+        -0.02604,
+        0.06942
+      ]
+    },
+    {
+      "asset": "QQQ",
+      "rule": "fixed",
+      "n": 2766,
+      "fallback_origins": 194,
+      "mean_logloss_unrestricted": 1.03062,
+      "du": -0.014777,
+      "du_ci": [
+        -0.02209,
+        -0.007643
+      ],
+      "dr": 0.001257,
+      "dr_ci": [
+        -9.7e-05,
+        0.002594
+      ],
+      "net_bp": 0.0554,
+      "net_ci": [
+        0.01307,
+        0.1021
+      ]
+    },
+    {
+      "asset": "QQQ",
+      "rule": "roll2520",
+      "n": 2766,
+      "fallback_origins": 11,
+      "mean_logloss_unrestricted": 1.093672,
+      "du": -0.004948,
+      "du_ci": [
+        -0.00983,
+        0.000303
+      ],
+      "dr": 0.000945,
+      "dr_ci": [
+        -0.000742,
+        0.00269
+      ],
+      "net_bp": 0.11474,
+      "net_ci": [
+        0.02108,
+        0.20709
+      ]
+    },
+    {
+      "asset": "QQQ",
+      "rule": "roll1260",
+      "n": 2766,
+      "fallback_origins": 121,
+      "mean_logloss_unrestricted": 1.093853,
+      "du": -0.004737,
+      "du_ci": [
+        -0.009596,
+        0.000208
+      ],
+      "dr": 0.001003,
+      "dr_ci": [
+        -0.000829,
+        0.002947
+      ],
+      "net_bp": 0.14425,
+      "net_ci": [
+        0.02973,
+        0.26684
+      ]
+    },
+    {
+      "asset": "QQQ",
+      "rule": "common",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.088299,
+      "du": -0.010367,
+      "du_ci": [
+        -0.016883,
+        -0.003442
+      ],
+      "dr": 0.000536,
+      "dr_ci": [
+        -0.000545,
+        0.001579
+      ],
+      "net_bp": 0.02483,
+      "net_ci": [
+        -0.02136,
+        0.07403
+      ]
+    },
+    {
+      "asset": "IWM",
+      "rule": "primary",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.093705,
+      "du": -0.004942,
+      "du_ci": [
+        -0.008825,
+        -0.001209
+      ],
+      "dr": 0.001595,
+      "dr_ci": [
+        -0.00014,
+        0.003359
+      ],
+      "net_bp": 0.07276,
+      "net_ci": [
+        0.02759,
+        0.12314
+      ]
+    },
+    {
+      "asset": "IWM",
+      "rule": "fixed",
+      "n": 2766,
+      "fallback_origins": 75,
+      "mean_logloss_unrestricted": 1.08028,
+      "du": -0.004302,
+      "du_ci": [
+        -0.007918,
+        -0.000675
+      ],
+      "dr": 0.001591,
+      "dr_ci": [
+        0.000293,
+        0.002951
+      ],
+      "net_bp": 0.05935,
+      "net_ci": [
+        0.01855,
+        0.10431
+      ]
+    },
+    {
+      "asset": "IWM",
+      "rule": "roll2520",
+      "n": 2766,
+      "fallback_origins": 8,
+      "mean_logloss_unrestricted": 1.094295,
+      "du": -0.00433,
+      "du_ci": [
+        -0.008643,
+        -6.1e-05
+      ],
+      "dr": 0.002083,
+      "dr_ci": [
+        -0.000648,
+        0.00485
+      ],
+      "net_bp": 0.11562,
+      "net_ci": [
+        0.03599,
+        0.20224
+      ]
+    },
+    {
+      "asset": "IWM",
+      "rule": "roll1260",
+      "n": 2766,
+      "fallback_origins": 48,
+      "mean_logloss_unrestricted": 1.096164,
+      "du": -0.002432,
+      "du_ci": [
+        -0.006713,
+        0.00191
+      ],
+      "dr": 0.001498,
+      "dr_ci": [
+        -0.001257,
+        0.004456
+      ],
+      "net_bp": 0.10857,
+      "net_ci": [
+        0.00097,
+        0.22222
+      ]
+    },
+    {
+      "asset": "IWM",
+      "rule": "common",
+      "n": 2766,
+      "fallback_origins": 0,
+      "mean_logloss_unrestricted": 1.093705,
+      "du": -0.004942,
+      "du_ci": [
+        -0.008825,
+        -0.001209
+      ],
+      "dr": 0.001595,
+      "dr_ci": [
+        -0.00014,
+        0.003359
+      ],
+      "net_bp": 0.07276,
+      "net_ci": [
+        0.02759,
+        0.12314
+      ]
+    }
+  ],
+  "inputs": {
+    "primary_SPY.csv": "205c8423785224e71338304a82d8e40167346496f7eca41e87004a2036be3cf0",
+    "fixed_SPY.csv": "2b05a180df2a26b65e5e911323f09b0cfd33c208372bee522560c6af0e694721"
+  }
+}

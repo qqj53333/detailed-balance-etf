@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-16",
+  "focused_checks": 17,
+  "latex": {
+    "preprint": {
+      "compiled": true,
+      "unexpected_latex_warnings": []
+    },
+    "manuscript": {
+      "compiled": true,
+      "unexpected_latex_warnings": []
+    },
+    "blind_manuscript": {
+      "compiled": true,
+      "unexpected_latex_warnings": []
+    },
+    "online_appendix": {
+      "compiled": true,
+      "unexpected_latex_warnings": []
+    }
+  },
+  "full_pipeline_rerun_in_v14": false,
+  "existing_v13_comparisons": 231,
+  "existing_v13_comparison_mismatches": 0,
+  "sharpe_descriptives_recomputed": true,
+  "primary_estimator_and_v13_solver_unchanged": true,
+  "pdf_sha256": "6f89a68a7a57fa4a69c4c2df2bd09798e66497f4c8edbba94dbe69705d3bdbd7"
+}

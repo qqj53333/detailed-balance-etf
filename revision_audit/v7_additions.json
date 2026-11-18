@@ -1,0 +1,256 @@
+{
+  "reconstruction": {
+    "source": "public chart endpoint of the same vendor series used by the frozen adapter",
+    "adjustment": "same-session factor applied to open and close; realized open-to-close return invariant",
+    "row_counts_through_2025_12_31": {
+      "SPY": 8288,
+      "QQQ": 6746,
+      "IWM": 6438
+    },
+    "fingerprint_row_counts": {
+      "SPY": 8288,
+      "QQQ": 6746,
+      "IWM": 6438
+    },
+    "published_vs_reconstructed_iid_logloss": {
+      "SPY": [
+        1.098647,
+        1.098647
+      ],
+      "QQQ": [
+        1.098673,
+        1.098673
+      ],
+      "IWM": [
+        1.098647,
+        1.098647
+      ]
+    },
+    "published_vs_reconstructed_U_minus_IID": {
+      "SPY": [
+        -0.005314,
+        -0.005314
+      ],
+      "QQQ": [
+        -0.011697,
+        -0.011699
+      ],
+      "IWM": [
+        -0.004942,
+        -0.004942
+      ]
+    },
+    "runs": {
+      "SPY": {
+        "run_dir": "run_20261114T221743818219Z",
+        "forecasts_sha256": "b2e084d95a310d76cb17bf99d8efbadbc449b1a994909520209b6e0b8b9e6435",
+        "summary_sha256": "b6527c8755fd13f7a230eb43b90c4a0d332030c713acd1769929c3a217e45567",
+        "n_final": 2766
+      },
+      "QQQ": {
+        "run_dir": "run_20261114T221836393092Z",
+        "forecasts_sha256": "f729f1c4c1ef16ea6b6c101d3db79266440e8e4101a5fced2ccef2ca40522693",
+        "summary_sha256": "5d538957a0ac0b306128ab8f6234c2af79429ff0d983e3aef35051a56ab07854",
+        "n_final": 2766
+      },
+      "IWM": {
+        "run_dir": "run_20261114T221836398292Z",
+        "forecasts_sha256": "50668c32bbcb1f49f1ebcc034fbdd7a38540df8cbe33fd9301d593e17874a869",
+        "summary_sha256": "c491ed6e19532bfe3d23fe5f51bbe966fff100780e9fe04da92ecf735c6329cc",
+        "n_final": 2766
+      }
+    }
+  },
+  "independent_estimator": {
+    "method": "six flow masses, direct simplex optimization, SLSQP with numerical gradients",
+    "origins_per_asset": 2766,
+    "max_abs_nll_gap": 7.28e-12,
+    "max_abs_probability_gap": 2.23e-08,
+    "random_start_origins_per_asset": 111,
+    "random_starts_per_origin": 10,
+    "max_gain_over_retained_fit": 1.82e-12
+  },
+  "components": {
+    "note": "A = middle versus outer; B = conditional upper versus lower; A+B equals total log loss",
+    "table": {
+      "SPY_U": {
+        "A": 0.65851,
+        "dA": -0.00535,
+        "dA_ci": [
+          -0.00994,
+          -0.00088
+        ],
+        "B": 0.43482,
+        "dB": 4e-05,
+        "dB_ci": [
+          -0.00104,
+          0.00105
+        ]
+      },
+      "SPY_R": {
+        "A": 0.65838,
+        "dA": -0.00548,
+        "dA_ci": [
+          -0.00925,
+          -0.00179
+        ],
+        "B": 0.43627,
+        "dB": 0.00148,
+        "dB_ci": [
+          -0.00015,
+          0.0031
+        ]
+      },
+      "QQQ_U": {
+        "A": 0.66579,
+        "dA": -0.01163,
+        "dA_ci": [
+          -0.0185,
+          -0.00456
+        ],
+        "B": 0.42118,
+        "dB": -7e-05,
+        "dB_ci": [
+          -0.00112,
+          0.001
+        ]
+      },
+      "QQQ_R": {
+        "A": 0.66613,
+        "dA": -0.01129,
+        "dA_ci": [
+          -0.018,
+          -0.00448
+        ],
+        "B": 0.42153,
+        "dB": 0.00027,
+        "dB_ci": [
+          -0.0014,
+          0.00197
+        ]
+      },
+      "IWM_U": {
+        "A": 0.65597,
+        "dA": -0.00363,
+        "dA_ci": [
+          -0.00738,
+          4e-05
+        ],
+        "B": 0.43773,
+        "dB": -0.00131,
+        "dB_ci": [
+          -0.00241,
+          -0.00024
+        ]
+      },
+      "IWM_R": {
+        "A": 0.6559,
+        "dA": -0.00371,
+        "dA_ci": [
+          -0.00688,
+          -0.00052
+        ],
+        "B": 0.4394,
+        "dB": 0.00036,
+        "dB_ci": [
+          -0.00042,
+          0.00109
+        ]
+      }
+    }
+  },
+  "circulation": {
+    "definition": "a_t = J12 = J23 = J31, percentage points of daily flow",
+    "SPY": {
+      "mean": -1.4,
+      "min": -1.56,
+      "max": -1.2,
+      "ar1": 0.99,
+      "mean_abs_P_minus_R": 0.0209,
+      "max_abs_P_minus_R": 0.0234
+    },
+    "QQQ": {
+      "mean": -0.77,
+      "min": -1.19,
+      "max": -0.54,
+      "ar1": 0.997,
+      "mean_abs_P_minus_R": 0.0116,
+      "max_abs_P_minus_R": 0.0179
+    },
+    "IWM": {
+      "mean": -1.32,
+      "min": -1.51,
+      "max": -0.96,
+      "ar1": 0.994,
+      "mean_abs_P_minus_R": 0.0198,
+      "max_abs_P_minus_R": 0.0226
+    }
+  },
+  "return_components": {
+    "note": "unrestricted minus IID, basis points per day, 5 bps per side",
+    "SPY": {
+      "dG": 0.03806,
+      "dG_ci": [
+        -0.00282,
+        0.08284
+      ],
+      "dR": 0.04251,
+      "dR_ci": [
+        0.00115,
+        0.08744
+      ]
+    },
+    "QQQ": {
+      "dG": 0.0249,
+      "dG_ci": [
+        -0.02106,
+        0.0732
+      ],
+      "dR": 0.02,
+      "dR_ci": [
+        -0.02604,
+        0.06942
+      ]
+    },
+    "IWM": {
+      "dG": 0.0703,
+      "dG_ci": [
+        0.02511,
+        0.12128
+      ],
+      "dR": 0.07276,
+      "dR_ci": [
+        0.02759,
+        0.12314
+      ]
+    }
+  },
+  "fixed_half": {
+    "note": "exact 0.5 exposure, turnover 1.0 per session, 5 bps per side",
+    "SPY": {
+      "mean_net": -0.000397,
+      "cumulative": -0.674342
+    },
+    "QQQ": {
+      "mean_net": -0.000362,
+      "cumulative": -0.647231
+    },
+    "IWM": {
+      "mean_net": -0.000563,
+      "cumulative": -0.798388
+    }
+  },
+  "break_even": {
+    "note": "incremental turnover too small for a stable break-even cost",
+    "mean_turnover_difference_round_trips": {
+      "SPY": -0.00089,
+      "QQQ": 0.00098,
+      "IWM": -0.000492
+    },
+    "implied_ratio_bps": {
+      "SPY": -42.8,
+      "QQQ": 25.4,
+      "IWM": -142.8
+    }
+  }
+}

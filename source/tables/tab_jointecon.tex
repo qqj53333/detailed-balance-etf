@@ -1,0 +1,24 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{5pt}
+\caption{Economic contrasts, adjusted within their own family}\label{tab:jointecon}
+\footnotesize\begin{tabular}{llrrrr}\toprule
+Asset & Contrast & Estimate & Simultaneous 95\% CI & Romano--Wolf $p$ & Holm $p$\\\midrule
+\multicolumn{6}{l}{\emph{Mean net return, 5 bps per side (bps/day)}}\\
+\addlinespace[2pt]
+SPY & $\mathrm{U}-\mathrm{IID}$ & $+$0.0425 & [$-$0.0172, $+$0.1022] & 0.184 & 0.326\\
+SPY & $\mathrm{R}-\mathrm{U}$ & $-$0.0359 & [$-$0.0924, $+$0.0206] & 0.220 & 0.407\\
+QQQ & $\mathrm{U}-\mathrm{IID}$ & $+$0.0200 & [$-$0.0456, $+$0.0856] & 0.555 & 1.000\\
+QQQ & $\mathrm{R}-\mathrm{U}$ & $-$0.0150 & [$-$0.0605, $+$0.0306] & 0.555 & 1.000\\
+IWM & $\mathrm{U}-\mathrm{IID}$ & $+$0.0728 & [$+$0.0059, $+$0.1396] & 0.022 & 0.040\\
+IWM & $\mathrm{R}-\mathrm{U}$ & $-$0.0688 & [$-$0.1420, $+$0.0043] & 0.054 & 0.063\\
+\midrule
+\multicolumn{6}{l}{\emph{Sharpe ratio (conventional $\sqrt{252}$ scaling)}}\\
+\addlinespace[2pt]
+SPY & $\mathrm{U}-\mathrm{IID}$ & $+$0.0227 & [$+$0.0006, $+$0.0447] & 0.032 & 0.048\\
+SPY & $\mathrm{R}-\mathrm{U}$ & $-$0.0252 & [$-$0.0457, $-$0.0047] & 0.006 & 0.009\\
+QQQ & $\mathrm{U}-\mathrm{IID}$ & $+$0.0041 & [$-$0.0137, $+$0.0219] & 0.555 & 1.000\\
+QQQ & $\mathrm{R}-\mathrm{U}$ & $-$0.0060 & [$-$0.0193, $+$0.0073] & 0.369 & 0.881\\
+IWM & $\mathrm{U}-\mathrm{IID}$ & $+$0.0278 & [$+$0.0085, $+$0.0470] & 0.001 & 0.002\\
+IWM & $\mathrm{R}-\mathrm{U}$ & $-$0.0251 & [$-$0.0459, $-$0.0044] & 0.007 & 0.009\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize One exploratory family of twelve contrasts, adjusted within itself, with no joint error control across this family and Table~\ref{tab:joint}. Estimates are unrestricted minus IID for the first contrast and reversible minus unrestricted for the second; for both metrics a positive difference favours the first model. Intervals are simultaneous, from the single-step max-$|t|$ critical value of 2.721; the $p$-values are stepdown-adjusted. The Sharpe statistic is recomputed inside every bootstrap draw from the resampled days, so its sampling variability is that of a ratio rather than of a mean.}
+\end{table}

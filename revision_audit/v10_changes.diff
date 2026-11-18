@@ -1,0 +1,48 @@
+--- v9/source/appendix_body.tex
++++ v10/source/appendix_body.tex
+--- 
++++ 
+@@ -2,7 +2,7 @@
+ \section{Supplementary results}
+ This appendix preserves supporting results from the same frozen experiment.
+ SPY development and validation were examined before final scoring. Their role is
+-design context rather than additional untouched evidence. Tables A1--A4 and the validation figures retain the original results and cost scenarios. Table A5 adds exposure summaries from the retained descriptive audit. Tables A6--A9 report the threshold and window rules, the calendar segments, the controlled simulation and the calibration bin counts.
++design context rather than additional untouched evidence. Tables A1--A4 and the validation figures retain the original results and cost scenarios. Table A5 adds exposure summaries from the retained descriptive audit. Tables A6--A9 report the threshold and window rules, the calendar segments, the controlled simulation and the calibration bin counts; Tables A10--A12 report the secondary inference families and a calibration summary.
+ \setcounter{table}{0}
+ \renewcommand{\thetable}{A\arabic{table}}
+ \renewcommand{\theHtable}{appendix.\arabic{table}}
+@@ -159,6 +159,19 @@
+ 
+ \input{tables/tab_bins}
+ 
++\subsection{Secondary families and calibration}\label{app:families}
++Table~\ref{tab:jointbrier} applies the same stepdown procedure to the six Brier-score contrasts. Here QQQ and IWM both survive, with adjusted $p$-values of 0.006 and 0.041, and SPY does not (0.067). The Brier family is adjusted within itself: its $p$-values are not comparable with those of Table~\ref{tab:joint}, and the difference between the two score families is a difference in how the scores weight errors, not a contradiction. The claim in the text that only one asset shows a score advantage therefore refers to log loss and not to scores in general.
++
++Table~\ref{tab:jointecon} does the same for six mean net-return contrasts at 5 basis points per side. IWM survives on both contrasts: the unrestricted-minus-IID difference (adjusted $p=0.020$) and the reversible-minus-unrestricted difference (0.047), the latter negative in sign, that is, against the restricted model. SPY and QQQ do not survive (0.171 and 0.531). This family inherits the allocation rule and the cost scenario, and no power claim is made for it.
++
++Table~\ref{tab:calibration} reports a count-weighted calibration error with a block-bootstrap interval. The statistic is small in absolute terms, between 0.026 and 0.040, but only three to seven of the thirty possible bins hold thirty or more observations, so it is dominated by a handful of cells and the intervals are as wide as the estimates themselves. It supports the descriptive reading of Figure~\ref{fig:calibration} and not a claim of calibrated probabilities.
++
++\input{tables/tab_jointbrier}
++
++\input{tables/tab_jointecon}
++
++\input{tables/tab_calibration}
++
+ \clearpage
+ \section{Computational verification and limitations}
+ The original analysis used Python 3.12.6, NumPy 2.3.2, pandas 2.3.3, SciPy 1.18.1,
+
+--- v9/source/body.tex
++++ v10/source/body.tex
+--- 
++++ 
+@@ -125,6 +125,8 @@
+ We therefore test the six contrasts jointly. The daily paired loss differences are aligned on the common target sessions and resampled with the same moving-block indices in every draw, so that dependence across assets and across contrasts is preserved. Observed statistics are standardized by the bootstrap standard deviation, and adjusted p-values follow the Romano--Wolf stepdown: the maximum statistic is first screened over all six hypotheses, and then over the hypotheses not yet rejected. A single-step max-$|t|$ critical value supplies simultaneous intervals; because it controls the family in one step it is more conservative than the stepdown test, and the two procedures need not agree at the boundary.
+ 
+ Table~\ref{tab:joint} gives the result. Only the QQQ unrestricted-minus-IID contrast is decisive (stepdown-adjusted $p=0.008$, simultaneous interval $[-0.0210,-0.0024]$). IWM sits exactly on the boundary: its stepdown p-value is 0.048, just below 5\%, while its single-step simultaneous interval still contains zero and Holm's procedure on the same raw p-values gives 0.056. We therefore report IWM as unresolved rather than rejected. SPY is not rejected either (0.093 and 0.097). No reversible-minus-unrestricted contrast approaches significance; the smallest adjusted p-value is 0.19.
++
++Two further families are reported in Appendix~\ref{app:families}: six Brier-score contrasts and six mean net-return contrasts, each adjusted within itself. The Brier contrasts reject for QQQ (adjusted $p=0.006$) and IWM (0.041) but not SPY (0.067); the return contrasts reject only for IWM (0.020 for unrestricted minus IID, 0.047 for reversible minus unrestricted, the latter against the restricted model). These are separate families, not additional corrections of the six log-loss contrasts, and the statements below about score advantage are statements about log loss.
+ 
+ The primary conclusion is unaffected: under every multiplicity convention, detailed balance shows no advantage. The secondary conclusion does change. The statement that the unrestricted chain has the lowest log loss for every asset is true of the point estimates and false as a familywise statement: it is a QQQ result, with IWM unresolved at the boundary and SPY not distinguishable.
+ 
+

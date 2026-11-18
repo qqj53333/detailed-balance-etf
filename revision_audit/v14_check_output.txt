@@ -1,0 +1,18 @@
+PASS all existing forecast hashes match recorded v12 values
+PASS ten v13 generated tables matched the v13 package
+PASS archived verification passed all 231 comparisons
+PASS SPY: independently recomputed descriptive moments match review audit
+PASS SPY: mean and scale components sum to ratio difference
+PASS QQQ: independently recomputed descriptive moments match review audit
+PASS QQQ: mean and scale components sum to ratio difference
+PASS IWM: independently recomputed descriptive moments match review audit
+PASS IWM: mean and scale components sum to ratio difference
+PASS SPY standard deviation increases, not decreases
+PASS SPY negative means imply positive scale contribution here
+PASS abstract qualifies primary log-loss intervals
+PASS no universal score-factorization claim retained
+PASS paired-variance correction direction is not asserted
+PASS SPY cost columns unchanged and correctly ordered
+PASS QQQ cost columns unchanged and correctly ordered
+PASS all source references and citations resolve
+17 focused v14 checks passed. No new full pipeline run or causal attribution.

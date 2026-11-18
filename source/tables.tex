@@ -1,0 +1,101 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+\caption{Available histories and final evaluation}\label{tab:data}
+\begin{tabular}{l ll rr}\toprule
+Asset & History begins & History ends & Records & Final $N$\\\midrule
+SPY & 1993-01-29 & 2025-12-31 & 8,288 & 2,766\\
+QQQ & 1999-03-10 & 2025-12-31 & 6,746 & 2,766\\
+IWM & 2000-05-26 & 2025-12-31 & 6,438 & 2,766\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize All final targets span 2 January 2015 to 31 December 2025. Histories begin at each provider's first available observation.}
+\end{table}
+
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+\caption{Final probability scores}\label{tab:scores}
+\begin{tabular}{llrr}\toprule
+Asset & Model & Log loss & Brier\\\midrule
+SPY & IID & 1.098647 & 0.666690\\
+SPY & Unrestricted & 1.093333 & 0.662953\\
+SPY & Reversible & 1.094648 & 0.663952\\
+QQQ & IID & 1.098673 & 0.666707\\
+QQQ & Unrestricted & 1.086977 & 0.658487\\
+QQQ & Reversible & 1.087662 & 0.659051\\
+IWM & IID & 1.098647 & 0.666690\\
+IWM & Unrestricted & 1.093705 & 0.663333\\
+IWM & Reversible & 1.095300 & 0.664364\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Lower values are better. Brier is the sum across three classes. Every row uses 2,766 targets.}
+\end{table}
+
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+\caption{Paired log-loss differences}\label{tab:intervals}
+\begin{tabular}{llrr}\toprule
+Asset & Contrast & Estimate & 95\% interval\\\midrule
+SPY & \mbox{$\mathrm{R}-\mathrm{U}$} & 0.001315 & [-0.000422, 0.003131]\\
+SPY & \mbox{$\mathrm{U}-\mathrm{IID}$} & -0.005314 & [-0.009963, -0.000713]\\
+QQQ & \mbox{$\mathrm{R}-\mathrm{U}$} & 0.000685 & [-0.000358, 0.001681]\\
+QQQ & \mbox{$\mathrm{U}-\mathrm{IID}$} & -0.011697 & [-0.018679, -0.004527]\\
+IWM & \mbox{$\mathrm{R}-\mathrm{U}$} & 0.001595 & [-0.000140, 0.003359]\\
+IWM & \mbox{$\mathrm{U}-\mathrm{IID}$} & -0.004942 & [-0.008825, -0.001209]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize R: reversible; U: unrestricted. First minus second; negative favors the first. Paired moving blocks of length 20, 5,000 draws. Pointwise percentile intervals without multiplicity adjustment or refitting.}
+\end{table}
+
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+\caption{Final net performance at 5 bps per side}\label{tab:economics}
+\begin{tabular}{llrrrr}\toprule
+Asset & Allocation & Return & Sharpe & Drawdown & Turnover\\\midrule
+SPY & IID & -67.43\% & -1.488 & -67.44\% & 1.0000\\
+SPY & Unrestricted & -67.05\% & -1.465 & -67.06\% & 0.9991\\
+SPY & Reversible & -67.37\% & -1.490 & -67.37\% & 1.0014\\
+SPY & Intraday long & -89.91\% & -1.488 & -89.91\% & 2.0000\\
+SPY & Cash & 0.00\% & --- & 0.00\% & 0.0000\\
+QQQ & IID & -64.72\% & -1.051 & -64.72\% & 0.9999\\
+QQQ & Unrestricted & -64.52\% & -1.047 & -64.52\% & 1.0009\\
+QQQ & Reversible & -64.66\% & -1.053 & -64.66\% & 1.0033\\
+QQQ & Intraday long & -88.55\% & -1.051 & -88.55\% & 2.0000\\
+QQQ & Cash & 0.00\% & --- & 0.00\% & 0.0000\\
+IWM & IID & -79.84\% & -1.605 & -80.10\% & 0.9999\\
+IWM & Unrestricted & -79.43\% & -1.578 & -79.72\% & 0.9994\\
+IWM & Reversible & -79.82\% & -1.603 & -80.10\% & 1.0012\\
+IWM & Intraday long & -96.27\% & -1.605 & -96.37\% & 2.0000\\
+IWM & Cash & 0.00\% & --- & 0.00\% & 0.0000\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Returns and drawdowns are cumulative; turnover is daily traded notional relative to starting capital. Sharpe uses conventional square-root-of-252 scaling. Cash Sharpe is undefined.}
+\end{table}
+
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{10pt}
+\caption{Cumulative cost sensitivity}\label{tab:costs}
+\begin{tabular}{llrrrrr}\toprule
+Asset & Model & Gross & 1 bps & 5 bps & 10 bps & 25 bps\\\midrule
+\mbox{SPY} & \mbox{IID} & \mbox{29.86\%} & \mbox{-1.52\%} & \mbox{-67.43\%} & \mbox{-91.84\%} & \mbox{-99.87\%}\\
+\mbox{SPY} & \mbox{Unrestricted} & \mbox{31.21\%} & \mbox{-0.47\%} & \mbox{-67.05\%} & \mbox{-91.73\%} & \mbox{-99.87\%}\\
+\mbox{SPY} & \mbox{Reversible} & \mbox{30.38\%} & \mbox{-1.16\%} & \mbox{-67.37\%} & \mbox{-91.84\%} & \mbox{-99.87\%}\\
+\mbox{QQQ} & \mbox{IID} & \mbox{40.66\%} & \mbox{6.68\%} & \mbox{-64.72\%} & \mbox{-91.16\%} & \mbox{-99.86\%}\\
+\mbox{QQQ} & \mbox{Unrestricted} & \mbox{41.66\%} & \mbox{7.40\%} & \mbox{-64.52\%} & \mbox{-91.12\%} & \mbox{-99.86\%}\\
+\mbox{QQQ} & \mbox{Reversible} & \mbox{41.55\%} & \mbox{7.25\%} & \mbox{-64.66\%} & \mbox{-91.18\%} & \mbox{-99.86\%}\\
+\mbox{IWM} & \mbox{IID} & \mbox{-19.58\%} & \mbox{-39.01\%} & \mbox{-79.84\%} & \mbox{-94.95\%} & \mbox{-99.92\%}\\
+\mbox{IWM} & \mbox{Unrestricted} & \mbox{-18.03\%} & \mbox{-37.83\%} & \mbox{-79.43\%} & \mbox{-94.84\%} & \mbox{-99.92\%}\\
+\mbox{IWM} & \mbox{Reversible} & \mbox{-19.35\%} & \mbox{-38.86\%} & \mbox{-79.82\%} & \mbox{-94.95\%} & \mbox{-99.92\%}\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Every cost is one-way; entry and exit are charged. Percentages cover the entire final period. No alternative rule is selected at any cost.}
+\end{table}
+
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{7pt}
+\caption{Scale and decomposition of unrestricted-minus-IID improvements}\label{tab:scale}
+\begin{tabular}{lrrrrr}\toprule
+Asset & Loss reduction & $\Delta\bar G$ & $\Delta\overline{cT}$ & $\Delta\bar R$ & Annualized $\Delta\bar R$\\
+ & (\%) & (bps/day) & (bps/day) & (bps/day) & (pp/252 sessions)\\\midrule
+SPY & 0.484 & 0.0381 & -0.0045 & 0.0425 & 0.1071\\
+QQQ & 1.065 & 0.0249 & 0.0049 & 0.0200 & 0.0504\\
+IWM & 0.450 & 0.0703 & -0.0025 & 0.0728 & 0.1834\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Loss reduction is $-100(\bar\ell_{\mathrm U}-\bar\ell_{\mathrm{IID}})/\bar\ell_{\mathrm{IID}}$. All return and cost differences are unrestricted minus IID at 5 bps per side. The mean cost difference is $2c(\bar w_{\mathrm U}-\bar w_{\mathrm{IID}})$; the gross difference is the reported mean net difference plus this cost difference. One basis point is $10^{-4}$ in return units; pp denotes percentage points. Annualized mean differences equal $252\times100\Delta\bar R$, not differences in compound annual growth rates. Values are approximate because the input losses and mean net differences are rounded in the retained tables. Separate pointwise intervals for the gross, cost and net components are reported in Section~\ref{sec:economics}.}
+\end{table}
+
+\input{tables/tab_components}
+
+\input{tables/tab_circulation}
+
+\input{tables/tab_joint}
+
+\input{tables/tab_layers}

@@ -1,0 +1,55 @@
+--- v10/source/appendix_body.tex
++++ v11/source/appendix_body.tex
+--- 
++++ 
+@@ -162,9 +162,9 @@
+ \subsection{Secondary families and calibration}\label{app:families}
+ Table~\ref{tab:jointbrier} applies the same stepdown procedure to the six Brier-score contrasts. Here QQQ and IWM both survive, with adjusted $p$-values of 0.006 and 0.041, and SPY does not (0.067). The Brier family is adjusted within itself: its $p$-values are not comparable with those of Table~\ref{tab:joint}, and the difference between the two score families is a difference in how the scores weight errors, not a contradiction. The claim in the text that only one asset shows a score advantage therefore refers to log loss and not to scores in general.
+ 
+-Table~\ref{tab:jointecon} does the same for six mean net-return contrasts at 5 basis points per side. IWM survives on both contrasts: the unrestricted-minus-IID difference (adjusted $p=0.020$) and the reversible-minus-unrestricted difference (0.047), the latter negative in sign, that is, against the restricted model. SPY and QQQ do not survive (0.171 and 0.531). This family inherits the allocation rule and the cost scenario, and no power claim is made for it.
+-
+-Table~\ref{tab:calibration} reports a count-weighted calibration error with a block-bootstrap interval. The statistic is small in absolute terms, between 0.026 and 0.040, but only three to seven of the thirty possible bins hold thirty or more observations, so it is dominated by a handful of cells and the intervals are as wide as the estimates themselves. It supports the descriptive reading of Figure~\ref{fig:calibration} and not a claim of calibrated probabilities.
++Table~\ref{tab:jointecon} applies the procedure to one exploratory family of twelve economic contrasts: six mean net-return differences and six Sharpe differences, all at 5 basis points per side. Four Sharpe contrasts survive. SPY and IWM gain on unrestricted minus IID (adjusted $p=0.032$ and $0.001$) and lose on reversible minus unrestricted (0.006 and 0.007, with negative estimates, that is, against the restricted model). Among mean net returns only IWM's unrestricted advantage survives (0.022); its reversible contrast falls just outside (0.054), and the SPY and QQQ net contrasts do not survive (0.184 and 0.555). The family inherits the allocation rule and the cost scenario, and no power claim is made for it.
++
++Table~\ref{tab:calibration} reports the count-weighted calibration error, its block-bootstrap interval and a parametric bootstrap p-value for the null that each day's outcome is drawn from that day's forecast. Every asset and model is rejected ($p\le0.004$). The rejection is driven by the marginal distribution rather than by the shape of the reliability curve: the cut points are estimated from history, and the final period realised class frequencies of 29.9/37.3/32.9 for SPY, 29.1/39.2/31.6 for QQQ and 32.8/36.7/30.6 for IWM, instead of one third each. The test therefore says that the level of the forecasts does not match the realised marginal; it does not identify a conditional calibration failure, and with only three to seven populated bins the individual cells carry little information.
+ 
+ \input{tables/tab_jointbrier}
+ 
+
+--- v10/source/body.tex
++++ v11/source/body.tex
+--- 
++++ 
+@@ -64,7 +64,7 @@
+ b_{t+1}=\sum_{j=1}^3\left(p_{t,j}-\mathbf{1}\{y_{t+1}=j\}\right)^2.
+ \label{eq:scores}
+ \end{equation}
+-Calibration uses ten fixed bins per class. Empty bins supply no evidence; bin averages do not display the full range of forecasts or provide a formal calibration test.
++Calibration uses ten fixed bins per class. Empty bins supply no evidence and bin averages do not display the full range of forecasts; Appendix~\ref{app:families} adds a count-weighted summary of the same bins with an interval and a joint test, which is a different object from the plotted averages.
+ 
+ To distinguish the information rewarded by the score from that used in the allocation, define $m_t=p_{t,2}$ and $q_t=p_{t,3}/(p_{t,1}+p_{t,3})$. Let $z_{t+1}=\mathbf{1}\{y_{t+1}=2\}$ and $u_{t+1}=\mathbf{1}\{y_{t+1}=3\}$. Positivity from smoothing makes these quantities well defined. The log loss factors exactly as
+ \begin{equation}
+@@ -126,7 +126,7 @@
+ 
+ Table~\ref{tab:joint} gives the result. Only the QQQ unrestricted-minus-IID contrast is decisive (stepdown-adjusted $p=0.008$, simultaneous interval $[-0.0210,-0.0024]$). IWM sits exactly on the boundary: its stepdown p-value is 0.048, just below 5\%, while its single-step simultaneous interval still contains zero and Holm's procedure on the same raw p-values gives 0.056. We therefore report IWM as unresolved rather than rejected. SPY is not rejected either (0.093 and 0.097). No reversible-minus-unrestricted contrast approaches significance; the smallest adjusted p-value is 0.19.
+ 
+-Two further families are reported in Appendix~\ref{app:families}: six Brier-score contrasts and six mean net-return contrasts, each adjusted within itself. The Brier contrasts reject for QQQ (adjusted $p=0.006$) and IWM (0.041) but not SPY (0.067); the return contrasts reject only for IWM (0.020 for unrestricted minus IID, 0.047 for reversible minus unrestricted, the latter against the restricted model). These are separate families, not additional corrections of the six log-loss contrasts, and the statements below about score advantage are statements about log loss.
++Two further families are reported in Appendix~\ref{app:families}: six Brier-score contrasts, and one exploratory economic family of twelve contrasts covering mean net returns and Sharpe ratios, each adjusted within itself. The Brier contrasts reject for QQQ (adjusted $p=0.006$) and IWM (0.041) but not SPY (0.067). In the economic family the Sharpe contrasts reject for SPY and IWM on both comparisons, while among mean net-return contrasts only IWM's unrestricted advantage survives (0.022). These are separate families, not additional corrections of the six log-loss contrasts, and the statements below about score advantage are statements about log loss.
+ 
+ The primary conclusion is unaffected: under every multiplicity convention, detailed balance shows no advantage. The secondary conclusion does change. The statement that the unrestricted chain has the lowest log loss for every asset is true of the point estimates and false as a familywise statement: it is a QQQ result, with IWM unresolved at the boundary and SPY not distinguishable.
+ 
+
+--- v10/source/figures.tex
++++ v11/source/figures.tex
+--- 
++++ 
+@@ -6,7 +6,7 @@
+ 
+ \begin{figure}[!htbp]\centering
+ \includegraphics[width=\linewidth]{../figures/figure2.pdf}
+-\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive. The common 0--1 axes retain the full probability scale; plotted points are bin averages, not individual forecast ranges. No confidence bands or formal calibration test are reported.}\label{fig:calibration}
++\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive. The common 0--1 axes retain the full probability scale; plotted points are bin averages, not individual forecast ranges. No confidence bands are shown here; a count-weighted summary and a joint test are reported in Appendix~\ref{app:families}.}\label{fig:calibration}
+ \end{figure}
+ 
+ \begin{figure}[!htbp]\centering
+

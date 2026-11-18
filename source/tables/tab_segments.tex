@@ -1,0 +1,19 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{6pt}
+\caption{Final-period comparisons by fixed calendar segment}\label{tab:segments}
+\begin{tabular}{llrrr}\toprule
+Asset & Segment & Sessions & $\Delta(\mathrm U-\mathrm{IID})$ & $\Delta(\mathrm R-\mathrm U)$\\
+ & & & [95\% CI] & [95\% CI]\\\midrule
+SPY & 2015--2018 & 1006 & $-$0.01182 [$-$0.01937, $-$0.00392] & $+$0.00156 [$-$0.00132, $+$0.00446]\\
+SPY & 2019--2022 & 1008 & $-$0.00620 [$-$0.01295, $+$0.00153] & $+$0.00144 [$-$0.00137, $+$0.00462]\\
+SPY & 2023--2025 & 752 & $+$0.00458 [$-$0.00421, $+$0.01257] & $+$0.00081 [$-$0.00268, $+$0.00433]\\
+\midrule
+QQQ & 2015--2018 & 1006 & $-$0.02994 [$-$0.04287, $-$0.01821] & $+$0.00075 [$-$0.00104, $+$0.00252]\\
+QQQ & 2019--2022 & 1008 & $-$0.01048 [$-$0.02065, $+$0.00006] & $+$0.00085 [$-$0.00058, $+$0.00252]\\
+QQQ & 2023--2025 & 752 & $+$0.01106 [$+$0.00239, $+$0.02182] & $+$0.00038 [$-$0.00189, $+$0.00247]\\
+\midrule
+IWM & 2015--2018 & 1006 & $-$0.00793 [$-$0.01358, $-$0.00167] & $+$0.00283 [$+$0.00023, $+$0.00538]\\
+IWM & 2019--2022 & 1008 & $-$0.00556 [$-$0.01226, $+$0.00150] & $+$0.00102 [$-$0.00211, $+$0.00408]\\
+IWM & 2023--2025 & 752 & $-$0.00011 [$-$0.00696, $+$0.00649] & $+$0.00071 [$-$0.00312, $+$0.00438]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Segment boundaries were fixed for this revision and are exploratory. Each interval is a percentile interval from 5,000 paired moving blocks of length 20 computed within the segment, conditional on the saved forecasts and without refitting. Nine segment-specific intervals are not a segment-difference test; adjacent segments share no sessions but the point estimates are not independent of the full-period result.}
+\end{table}

@@ -1,0 +1,19 @@
+\begin{table}[!htbp]\centering\footnotesize\setlength{\tabcolsep}{4pt}
+\caption{Rolling class-frequency forecasts under the primary cut points}\label{tab:rollfreq}
+\begin{tabular}{lrrrrrr}\toprule
+Asset & Window & $\mathrm{Roll}-\mathrm{IID}$ & $\mathrm{U}-\mathrm{Roll}$ & \multicolumn{3}{c}{$\mathrm{U}-\mathrm{Roll}$ by segment}\\
+ & (sessions) & [95\% CI] & [95\% CI] & 2015--2018 & 2019--2022 & 2023--2025\\\midrule
+SPY & 252 & $-$14.44 [$-$30.85, $+$0.47] & $+$9.13 [$-$5.01, $+$24.94] & $+$28.17 & $+$0.72 & $-$5.08\\
+SPY & 504 & $-$9.40 [$-$23.56, $+$3.42] & $+$4.09 [$-$8.04, $+$17.90] & $+$12.13 & $+$4.68 & $-$7.48\\
+SPY & 1,260 & $-$8.14 [$-$20.34, $+$3.20] & $+$2.82 [$-$7.97, $+$14.49] & $+$22.94 & $-$19.73 & $+$6.14\\
+\midrule
+QQQ & 252 & $-$21.88 [$-$40.83, $-$4.78] & $+$10.18 [$-$4.26, $+$26.54] & $+$29.45 & $-$2.53 & $+$1.44\\
+QQQ & 504 & $-$17.33 [$-$35.26, $-$1.32] & $+$5.63 [$-$8.51, $+$21.13] & $+$15.12 & $+$1.74 & $-$1.85\\
+QQQ & 1,260 & $-$11.25 [$-$28.53, $+$4.35] & $-$0.45 [$-$14.05, $+$14.45] & $+$26.61 & $-$32.55 & $+$6.38\\
+\midrule
+IWM & 252 & $-$7.37 [$-$19.65, $+$3.67] & $+$2.43 [$-$8.29, $+$14.16] & $+$16.28 & $-$5.75 & $-$5.14\\
+IWM & 504 & $-$6.72 [$-$17.54, $+$2.59] & $+$1.78 [$-$7.52, $+$12.22] & $+$14.50 & $-$4.21 & $-$7.21\\
+IWM & 1,260 & $-$4.03 [$-$13.19, $+$4.48] & $-$0.91 [$-$9.41, $+$7.97] & $+$20.82 & $-$20.34 & $-$3.93\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Log-loss differences in $10^{-3}$ nats; negative values favour the first model. The rolling forecast uses the smoothed frequencies of the most recent $W$ historical labels, relabelled with the cut points of the primary rule at each origin, and no state dependence. Window lengths were chosen after the primary results were known. Intervals are pointwise percentile intervals from 5,000 paired moving blocks of length 20; segment intervals are in the replication results.}
+\end{table}

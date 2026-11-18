@@ -1,0 +1,18 @@
+\begin{table}[!htbp]\centering\footnotesize\setlength{\tabcolsep}{5pt}
+\caption{Unrestricted exposure and next-session return by current state}\label{tab:statemeans}
+\begin{tabular}{llrrrr}\toprule
+Asset & Current state & Mean $w^{\mathrm U}$ (\%) & Mean $r_{t+1}$ (bps) & Pointwise 95\% CI & Simultaneous 95\% CI\\\midrule
+SPY & Lower & 51.668 & $+$7.61 & [$+$1.73, $+$14.75] & [$-$1.62, $+$16.84]\\
+SPY & Middle & 49.824 & $-$0.23 & [$-$4.25, $+$3.61] & [$-$5.72, $+$5.26]\\
+SPY & Upper & 48.541 & $-$0.36 & [$-$5.34, $+$4.60] & [$-$7.32, $+$6.61]\\
+\midrule
+QQQ & Lower & 50.281 & $+$13.37 & [$+$5.73, $+$22.53] & [$+$1.68, $+$25.05]\\
+QQQ & Middle & 51.040 & $+$0.89 & [$-$4.50, $+$6.26] & [$-$6.67, $+$8.45]\\
+QQQ & Upper & 48.596 & $-$4.66 & [$-$12.51, $+$2.90] & [$-$15.39, $+$6.06]\\
+\midrule
+IWM & Lower & 51.503 & $+$7.64 & [$+$0.65, $+$16.14] & [$-$3.25, $+$18.53]\\
+IWM & Middle & 48.743 & $-$6.38 & [$-$12.08, $-$0.72] & [$-$14.31, $+$1.55]\\
+IWM & Upper & 49.805 & $-$4.68 & [$-$12.89, $+$3.55] & [$-$16.26, $+$6.91]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Final-period descriptive summaries by the state of the origin session under the primary rule. Intervals resample sessions with the common moving blocks and recompute each conditional mean as a ratio of resampled sums; the simultaneous interval uses the single-step max-$|t|$ critical value 2.750 over the nine cells. These are conditional averages over the evaluation period, not a trading rule; selecting states from them and reporting returns in the same period would be in-sample.}
+\end{table}

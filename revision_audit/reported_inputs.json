@@ -1,0 +1,17 @@
+{
+  "SPY": {
+    "iid_logloss": 1.098647,
+    "logloss_difference": -0.005314,
+    "mean_net_difference": 4.251e-06
+  },
+  "QQQ": {
+    "iid_logloss": 1.098673,
+    "logloss_difference": -0.011697,
+    "mean_net_difference": 1.999e-06
+  },
+  "IWM": {
+    "iid_logloss": 1.098647,
+    "logloss_difference": -0.004942,
+    "mean_net_difference": 7.276e-06
+  }
+}

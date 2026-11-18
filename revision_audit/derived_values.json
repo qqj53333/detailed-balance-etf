@@ -1,0 +1,30 @@
+{
+  "SPY": {
+    "relative_logloss_reduction_percent": 0.48368584267740233,
+    "gross_difference_bps_per_day": 0.038059665850623765,
+    "cost_difference_bps_per_day": -0.004450334149376234,
+    "net_difference_bps_per_day": 0.04251,
+    "annualized_mean_net_difference_percentage_points": 0.1071252
+  },
+  "QQQ": {
+    "relative_logloss_reduction_percent": 1.0646479889830733,
+    "gross_difference_bps_per_day": 0.024890179647881473,
+    "cost_difference_bps_per_day": 0.004900179647881475,
+    "net_difference_bps_per_day": 0.019989999999999997,
+    "annualized_mean_net_difference_percentage_points": 0.05037479999999999
+  },
+  "IWM": {
+    "relative_logloss_reduction_percent": 0.44982601326904825,
+    "gross_difference_bps_per_day": 0.07029890673380441,
+    "cost_difference_bps_per_day": -0.002461093266195591,
+    "net_difference_bps_per_day": 0.07276,
+    "annualized_mean_net_difference_percentage_points": 0.1833552
+  },
+  "cost_only_illustration": {
+    "sessions": 2766,
+    "one_way_cost": 0.0005,
+    "weight": 0.5,
+    "wealth": 0.25073821172899147,
+    "loss_percent": 74.92617882710086
+  }
+}

@@ -1,6 +1,6 @@
 # Detailed Balance in Three-State ETF Forecasting and Intraday Allocation
 
-Jinziqi Zhang �� Preprint v17 �� 18 November 2026
+Jinziqi Zhang · Preprint v17 · 18 November 2026
 
 The main paper and appendix compile together from source/preprint.tex. The empirical comparison uses next-session open-to-close returns, three ETFs, and an expanding primary rule. The benchmark layers are exploratory. Read AUDIT.md for the scope of the release checks and CHANGELOG.md for the v16 changes.
 

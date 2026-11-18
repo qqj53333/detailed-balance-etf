@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-16",
+  "focused_checks": 15,
+  "focused_test_output": "PASS calibration point estimate is observed zero, not bootstrap mean\nPASS all nine old calibration point estimates were bootstrap means\nPASS calibration intervals and reference probabilities preserved\nPASS calibration table generated from corrected audit\nPASS simulation circulation displayed in percentage points\nPASS simulation table agrees with generator\nPASS generating matrix valid and circulation correct (0.0)\nPASS generating matrix valid and circulation correct (-0.007)\nPASS generating matrix valid and circulation correct (-0.014)\nPASS fallback refuses a fit above the documented gradient limit\nPASS fallback accepts a finite feasible fit within tolerance\nPASS every source reference and citation has a definition\nPASS IWM stepdown rejection and method sensitivity both stated\nPASS obsolete simulation value removed\nPASS QQQ middle-component interval excludes zero in both prose and table\n15 focused checks passed; no full refit or new bootstrap coverage claim.\n",
+  "latex": {
+    "preprint": {
+      "compiled": true,
+      "unexpected_latex_warnings": [],
+      "hyperlinks_intentionally_disabled": false
+    },
+    "manuscript": {
+      "compiled": true,
+      "unexpected_latex_warnings": [],
+      "hyperlinks_intentionally_disabled": true
+    },
+    "blind_manuscript": {
+      "compiled": true,
+      "unexpected_latex_warnings": [],
+      "hyperlinks_intentionally_disabled": true
+    },
+    "online_appendix": {
+      "compiled": true,
+      "unexpected_latex_warnings": [],
+      "hyperlinks_intentionally_disabled": true
+    }
+  },
+  "abstract_word_counts_whitespace": {
+    "v11": 331,
+    "v12": 225
+  },
+  "forecast_hashes_match_v7": true,
+  "frozen_estimator_archive_unchanged": true,
+  "calibration_recomputed": true,
+  "components_recomputed": true,
+  "full_model_refit": false,
+  "full_simulation_rerun": false,
+  "new_market_data_retrieval": false,
+  "complete_pdf_sha256": "b56bdbdfd0833f686ba04ba868d72eeff8502ea823aa3b065fae0e594021965b",
+  "original_input_zip_sha256": "61b12060b31c6ca295763652b334c03c45781e965b042b30b4bad09113f63056"
+}

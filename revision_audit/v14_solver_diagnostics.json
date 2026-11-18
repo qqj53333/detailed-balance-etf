@@ -1,0 +1,92 @@
+[
+  {
+    "file": "common_IWM.csv",
+    "n": 3918,
+    "fallback": 0,
+    "max_projected_gradient": 0
+  },
+  {
+    "file": "common_QQQ.csv",
+    "n": 3918,
+    "fallback": 1,
+    "max_projected_gradient": 3.789561257387201e-13
+  },
+  {
+    "file": "common_SPY.csv",
+    "n": 3918,
+    "fallback": 0,
+    "max_projected_gradient": 0
+  },
+  {
+    "file": "fixed_IWM.csv",
+    "n": 3918,
+    "fallback": 75,
+    "max_projected_gradient": 1.8189894035458565e-12
+  },
+  {
+    "file": "fixed_QQQ.csv",
+    "n": 4226,
+    "fallback": 201,
+    "max_projected_gradient": 1.5158245029548805e-12
+  },
+  {
+    "file": "fixed_SPY.csv",
+    "n": 5768,
+    "fallback": 14,
+    "max_projected_gradient": 1.3642420526593924e-12
+  },
+  {
+    "file": "primary_IWM.csv",
+    "n": 3918,
+    "fallback": 0,
+    "max_projected_gradient": 0
+  },
+  {
+    "file": "primary_QQQ.csv",
+    "n": 4226,
+    "fallback": 0,
+    "max_projected_gradient": 0
+  },
+  {
+    "file": "primary_SPY.csv",
+    "n": 5768,
+    "fallback": 0,
+    "max_projected_gradient": 0
+  },
+  {
+    "file": "roll1260_IWM.csv",
+    "n": 3918,
+    "fallback": 77,
+    "max_projected_gradient": 3.031649005909761e-13
+  },
+  {
+    "file": "roll1260_QQQ.csv",
+    "n": 4226,
+    "fallback": 128,
+    "max_projected_gradient": 3.789561257387201e-13
+  },
+  {
+    "file": "roll1260_SPY.csv",
+    "n": 5768,
+    "fallback": 235,
+    "max_projected_gradient": 3.789561257387201e-13
+  },
+  {
+    "file": "roll2520_IWM.csv",
+    "n": 3918,
+    "fallback": 10,
+    "max_projected_gradient": 6.063298011819522e-13
+  },
+  {
+    "file": "roll2520_QQQ.csv",
+    "n": 4226,
+    "fallback": 11,
+    "max_projected_gradient": 5.305385760342082e-13
+  },
+  {
+    "file": "roll2520_SPY.csv",
+    "n": 5768,
+    "fallback": 15,
+    "max_projected_gradient": 6.063298011819521e-13
+  }
+]

@@ -1,0 +1,13 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{6pt}
+\caption{Brier-score contrasts, adjusted within their own family}\label{tab:jointbrier}
+\footnotesize\begin{tabular}{llrrrr}\toprule
+Asset & Contrast & Estimate & Pointwise 95\% CI & Romano--Wolf $p$ & Holm $p$\\\midrule
+SPY & $\mathrm{U}-\mathrm{IID}$ & $-$0.003737 & [$-$0.006875, $-$0.000653] & 0.067 & 0.066\\
+SPY & $\mathrm{R}-\mathrm{U}$ & $+$0.000999 & [$-$0.000141, $+$0.002195] & 0.190 & 0.230\\
+QQQ & $\mathrm{U}-\mathrm{IID}$ & $-$0.008222 & [$-$0.013047, $-$0.003308] & 0.006 & 0.010\\
+QQQ & $\mathrm{R}-\mathrm{U}$ & $+$0.000564 & [$-$0.000087, $+$0.001199] & 0.190 & 0.230\\
+IWM & $\mathrm{U}-\mathrm{IID}$ & $-$0.003356 & [$-$0.005981, $-$0.000856] & 0.041 & 0.045\\
+IWM & $\mathrm{R}-\mathrm{U}$ & $+$0.001031 & [$-$0.000081, $+$0.002179] & 0.190 & 0.230\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Separate family, adjusted within itself only. Estimates are model minus IID for the first contrast and reversible minus unrestricted for the second; for scores a negative difference favours the first model, for returns a positive difference does. Intervals are pointwise percentile intervals from the same 5,000 paired moving-block draws, reindexed jointly across the six contrasts; the $p$-values are stepdown-adjusted within this family and do not control errors jointly with Table~\ref{tab:joint}.}
+\end{table}

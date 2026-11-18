@@ -1,0 +1,996 @@
+--- v11/analysis/pipeline.py
++++ v12/analysis/pipeline.py
+@@ -1,7 +1,7 @@
+-"""One-command driver for every number added in revisions v7--v9.
++"""Driver for the derived analyses, including v12 calibration corrections.
+ 
+ Usage:
+-    python -m analysis.pipeline --work out --prices prices --package . all
++    python -m analysis.pipeline --work out --prices prices --package . --stages all
+ 
+ Stages may be run individually. Each writes JSON/CSV under <work>/results and
+ figures under <work>/figures. The final verify stage compares the generated
+--- v11/analysis/README.md
++++ v12/analysis/README.md
+@@ -1,9 +1,12 @@
+ # Reproduction pipeline
+ 
+-One command regenerates every number added in revisions v7, v8 and v9, starting
+-from three price files and the frozen code package.
++The pipeline regenerates the derived analysis stages from three price files
++and the frozen code package, including the secondary families and corrected
++v12 calibration summaries. Its aggregate verify stage covers the older
++v7--v9 results only; `revision_audit/check_v12.py` checks the v12 corrections.
++The full pipeline was not rerun for this editorial revision.
+ 
+-    python -m analysis.pipeline --work out --prices prices --package . all
++    python -m analysis.pipeline --work out --prices prices --package . --stages all
+ 
+ The final stage compares the regenerated numbers with the published ones in
+ `revision_audit/v9_additions.json` and exits non-zero on a mismatch.
+@@ -29,12 +32,12 @@
+ | `code` | unpacks the frozen release candidate under `<work>/code` | — |
+ | `forecasts` | runs the frozen CLI for each asset | `<work>/runs/<ticker>/run_*/forecasts.csv` |
+ | `matrices` | refits the walk-forward and records every 3x3 matrix | `results/matrices.csv`, `circulation_summary.json` |
+-| `scores` | score components, allocation derivatives, bin counts | `components.json`, `components_ru.json`, `derivatives.json`, `bins.json` |
+-| `inference` | Romano--Wolf and Holm over six contrasts, segments, rolling paths | `joint.json`, `segments.json`, `rolling_*.csv` |
++| `scores` | score components, allocation derivatives, bin counts, calibration diagnostics | `components.json`, `components_ru.json`, `derivatives.json`, `bins.json`, `calibration.json` |
++| `inference` | separate log-loss, Brier and economic families, segments, rolling paths | `joint.json`, `joint_brier.json`, `joint_economic.json`, `segments.json`, `rolling_*.csv` |
+ | `sensitivity` | five estimation rules | `sens/*.csv`, `sensitivity.json` |
+ | `simulation` | controlled simulation and asymptotic costs | `simulation.json` |
+ | `figures` | Figures 3 and 4 | `figures/figure5_circulation.pdf`, `figures/figure6_rolling.pdf` |
+-| `tables` | renders Tables 7, 8, 9 and A6--A9 from the JSON outputs | `source/tables/*.tex` |
++| `tables` | renders Tables 7, 8, 9 and A6--A12 from the JSON outputs | `source/tables/*.tex` |
+ | `verify` | compares against the published audit file | exit status |
+ 
+ Stages can be run separately, for example
+@@ -47,8 +50,10 @@
+ Bootstrap: 5,000 paired non-circular moving blocks, length 20, seed 20261113, no
+ refitting. Simulation: seed 20261115, 500 replications per cell. Estimation uses
+ the frozen estimator; where it stops on a line-search precision limit, the same
+-objective is re-solved from the same starting point and accepted only when the
+-gradient infinity norm is at most 1e-5, and the count is recorded.
++objective is re-solved by BFGS, followed when needed by a Nelder--Mead attempt.
++The fallback is accepted only when finite, feasible and its gradient infinity
++norm is at most 2.1e-5. This explicit guard was added in v12; the earlier
++implementation recorded the norm but did not enforce that final ceiling.
+ 
+ ## Layout
+ 
+@@ -70,12 +75,14 @@
+ intervals, which are stored rounded to five decimals in the audit files, and 1e-3
+ for p-values, which are stored rounded to three or four decimals.
+ 
+-A full run from the three price files reproduces every one of them, and the
+-rebuilt forecast panels are bit-identical to the frozen package's own output.
++Earlier revision documentation reports a full run reproducing these archived
++comparisons. The v12 review did not independently repeat that full run. Its
++focused tests and calibration recomputation are recorded separately; a future
++full run may stop if a fallback fit fails the newly enforced numerical guard.
+ 
+ ## What the verification does and does not establish
+ 
+-It establishes that the reported numbers are reproducible from the price files by
+-this code. It does not establish that the price files are the archived snapshot:
++A successful verify stage checks only the listed archived comparisons against
++the generated aggregate results, within the stated tolerances. It does not establish that the price files are the archived snapshot:
+ the vendor revises history, and the hashes are reported in Appendix B.1 rather
+ than matched.
+--- v11/analysis/rules.py
++++ v12/analysis/rules.py
+@@ -62,7 +62,7 @@
+ 
+ def reversible_fit(models, states, alpha=ALPHA):
+     """Frozen estimator first; on a line-search precision limit, the same objective
+-    with the same initialization is accepted when the gradient norm is small."""
++    is retried and accepted only when finite and within the documented tolerance."""
+     try:
+         return models.reversible_matrix(states, alpha=alpha)[0], "package", 0.0
+     except RuntimeError:
+@@ -78,6 +78,10 @@
+                 best = (alt.fun, alt.x)
+                 gnorm = float(np.linalg.norm(_grad(alt.x, c, r), np.inf))
+         flow, pi = _flow(best[1])
++        if (not np.isfinite(best[0]) or not np.isfinite(gnorm)
++                or gnorm > 2.1e-5 or not np.isfinite(flow).all()
++                or not (flow > 0).all() or not (pi > 0).all()):
++            raise RuntimeError(f"Fallback reversible fit failed validation: gradient={gnorm}")
+         return flow / pi[:, None], "fallback", gnorm
+ 
+ 
+--- v11/analysis/scores.py
++++ v12/analysis/scores.py
+@@ -178,7 +178,8 @@
+                 chunk = idx[start:start + 500]
+                 stats[start:start + 500] = _ece_chunk(chunk, bin_index, prob, onehot, edges)
+             lo, hi = np.percentile(stats, [2.5, 97.5])
+-            rows.append(dict(asset=t, model=m, ece=float(stats.mean()), ci=[float(lo), float(hi)],
++            observed = float(_ece_chunk(np.arange(n)[None, :], bin_index, prob, onehot, edges)[0])
++            rows.append(dict(asset=t, model=m, ece=observed, bootstrap_mean=float(stats.mean()), ci=[float(lo), float(hi)],
+                              bins_30=int(_bins_with_support(bin_index, 30))))
+     return rows
+ 
+@@ -205,11 +206,11 @@
+     return sum(int((np.bincount(b, minlength=10) >= threshold).sum()) for b in bin_index)
+ 
+ def calibration_test(cfg: Config, draws: int = 500, seed: int = 20261115):
+-    """Parametric bootstrap test of zero bin-level calibration error.
+-
+-    Under the null the observed outcome on each day is a draw from that day's
+-    forecast distribution. Simulating outcomes this way gives the null
+-    distribution of the same statistic reported in Table A12.
++    """Independent-draw reference diagnostic for observed bin-level error.
++
++    Freezes the full forecast sequence and draws outcomes independently.
++    This stronger reference model does not regenerate adaptive forecasts and
++    is not a general test of sequential calibration under serial dependence.
+     """
+     edges = np.linspace(0, 1, 11)
+     rng = np.random.default_rng(seed)
+--- v11/analysis/tables.py
++++ v12/analysis/tables.py
+@@ -76,11 +76,11 @@
+             rows.append(f"{asset} & {label} & {_signed(r['mean'], 6)} & {_ci(pointwise, 6)} & "
+                         f"{r['p_stepdown']:.3f} & {r['p_holm']:.3f} & {_ci(r['simultaneous_ci'], 6)}" + r"\\")
+     head = [r"\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{5pt}",
+-            r"\caption{Familywise inference for the six score contrasts}\label{tab:joint}",
++            r"\caption{Familywise inference for the six log-loss contrasts}\label{tab:joint}",
+             r"\footnotesize\begin{tabular}{llrrrrr}\toprule",
+             r"Asset & Contrast & Estimate & Pointwise 95\% CI & Romano--Wolf $p$ & Holm $p$ & Simultaneous CI\\\midrule"]
+     tail = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. All six contrasts use 2,766 common target sessions and the 5,000 paired moving-block draws of Section~\ref{sec:joint}, reindexed jointly across assets and contrasts. The Romano--Wolf $p$-value is stepdown-adjusted for the family of six; Holm's column applies a closed-form procedure to the same raw $p$-values. The simultaneous interval uses a single-step max-$|t|$ critical value of " + f"{results['joint']['q95']:.3f}" + r" and is more conservative than the stepdown test, so the two need not agree at the boundary. Pointwise intervals reproduce Table~\ref{tab:intervals} and are not familywise. No adjustment covers Brier scores, components or economic outcomes.}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. All six contrasts use 2,766 common target sessions and the 5,000 paired moving-block draws of Section~\ref{sec:joint}, reindexed jointly across assets and contrasts. The Romano--Wolf $p$-value is stepdown-adjusted for the family of six; Holm's column applies a closed-form procedure to the same raw $p$-values. The simultaneous interval uses a single-step max-$|t|$ critical value of " + f"{results['joint']['q95']:.3f}" + r" and is more conservative than the stepdown test, so the two need not agree at the boundary. Pointwise intervals use the reconstructed panel and are not familywise; QQQ differs slightly from the archived estimates in Table~\ref{tab:intervals}. Separate adjustments for Brier and economic contrasts are reported in Appendix~\ref{app:families}; component intervals remain pointwise. No correction controls all families jointly.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+@@ -146,10 +146,10 @@
+     for scenario in ("reversible", "weak_irreversible", "empirical_irreversible"):
+         cells = [next(c for c in sim["cells"] if c["scenario"] == scenario and c["n"] == n) for n in lengths]
+         j = cells[0]["J"]
+-        rows.append(f"{SCENARIO_LABEL[scenario]} & {j:+.1f} & "
++        rows.append(f"{SCENARIO_LABEL[scenario]} & {100*j:+.1f} & "
+                     + " & ".join(f"{1e3*c['delta']:+.3f} ({1e3*c['se']:.3f})" for c in cells) + r"\\")
+     tail = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Entries are $10^{3}$ times the difference in expected log loss between the restricted and unrestricted estimators, evaluated against the generating matrix; Monte Carlo standard errors are in parentheses, from 500 simulated chains per cell. $j$ is the circulation $J_{12}=J_{23}=J_{31}$ in percentage points of daily flow. Positive values mean that imposing detailed balance costs expected log loss. The generating matrices have a uniform stationary distribution, a diagonal of 0.35 and symmetric off-diagonal flows of 0.325. The design was fixed after the empirical results were seen and is calibrated to them, so the agreement reported in Section~\ref{sec:simulation} is an explanation, not a confirmation.}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Entries are $10^{3}$ times the difference in expected log loss between the restricted and unrestricted estimators, evaluated against the generating matrix; Monte Carlo standard errors are in parentheses, from 500 simulated chains per cell. $j$ is the circulation $J_{12}=J_{23}=J_{31}$ in percentage points of daily flow. Positive values mean that imposing detailed balance costs expected log loss. The generating matrices have a uniform stationary distribution, baseline transition probabilities of 0.35 on the diagonal and 0.325 off the diagonal; stationary flows are one-third of those probabilities. The design was fixed after the empirical results were seen and is calibrated to them, so the agreement reported in Section~\ref{sec:simulation} is an explanation, not a confirmation.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+@@ -168,7 +168,7 @@
+             r"\begin{tabular}{llrrr}\toprule",
+             r"Asset & Model & Empty bins (of 30) & Smallest non-empty & Largest\\\midrule"]
+     tail = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Bins are the ten fixed edges of Figure~\ref{fig:calibration}, counted separately for each of the three one-versus-rest classes, so thirty bins are possible. Most are empty: the forecast probabilities concentrate near one third, and a bin holding two observations carries no calibration information. The counts here are the only measure of how much support each plotted marker has; the summary statistic and test built from the same bins are in Table~\ref{tab:calibration}.}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Bins are the ten fixed edges of Figure~\ref{fig:calibration}, counted separately for each of the three one-versus-rest classes, so thirty bins are possible. Most are empty: the forecast probabilities concentrate near one third, and a bin holding two observations provides little precision about calibration. The counts here are the only measure of how much support each plotted marker has; the summary statistic and reference diagnostic built from the same bins are in Table~\ref{tab:calibration}.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+@@ -193,7 +193,7 @@
+             r"\footnotesize\begin{tabular}{llrrrr}\toprule",
+             r"Asset & Contrast & Estimate" + units + r" & Pointwise 95\% CI & Romano--Wolf $p$ & Holm $p$\\\midrule"]
+     tail = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Separate family, adjusted within itself only. Estimates are model minus IID for the first contrast and reversible minus unrestricted for the second; for scores a negative difference favours the first model, for returns a positive difference does. Intervals are pointwise percentile intervals from the same 5,000 paired moving-block draws, reindexed jointly across the six contrasts; the $p$-values are stepdown-adjusted within this family and are not comparable with those of Table~\ref{tab:joint}.}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize Separate family, adjusted within itself only. Estimates are model minus IID for the first contrast and reversible minus unrestricted for the second; for scores a negative difference favours the first model, for returns a positive difference does. Intervals are pointwise percentile intervals from the same 5,000 paired moving-block draws, reindexed jointly across the six contrasts; the $p$-values are stepdown-adjusted within this family and do not control errors jointly with Table~\ref{tab:joint}.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+@@ -210,11 +210,11 @@
+             rows.append(f"{asset} & {MODEL_LABEL[model]} & {r['ece']:.4f} & {_ci_plain(r['ci'])} & "
+                         f"{r['p_value']:.3f} & {r['bins_30']}" + r"\\")
+     head = [r"\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{6pt}",
+-            r"\caption{Calibration error, interval and test}\label{tab:calibration}",
++            r"\caption{Observed calibration error and independent-draw reference diagnostic}\label{tab:calibration}",
+             r"\begin{tabular}{llrrrr}\toprule",
+-            r"Asset & Model & Calibration error & 95\% CI & $p$ & Bins with $n\ge30$\\\midrule"]
+-    tail = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize The statistic is the mean over the three one-versus-rest classes of $\sum_b (n_b/N)\lvert\bar p_b-\hat o_b\rvert$ over the ten fixed bins of Figure~\ref{fig:calibration}. The interval is a percentile interval from 5,000 paired moving blocks of length 20 computed by resampling days and recomputing every bin. The $p$-value comes from a parametric bootstrap in which each day's outcome is drawn from that day's forecast; it tests the joint null that the forecasts are calibrated, not a specific bin. Three to seven of the thirty possible bins hold thirty or more observations, so the statistic is dominated by a few cells.}",
++            r"Asset & Model & Observed error & 95\% CI & Reference $p$ & Bins with $n\ge30$\\\midrule"]
++    tail = [r"\bottomrule\end{tabular}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize The statistic is the mean over the three one-versus-rest classes of $\sum_b (n_b/N)\lvert\bar p_b-\hat o_b\rvert$ over the ten fixed bins of Figure~\ref{fig:calibration}. The interval is a percentile interval from 5,000 paired moving blocks of length 20 computed by resampling days and recomputing every bin. The reference $p$ uses 500 simulations with independent outcomes drawn from each day's frozen forecast and the plus-one correction. It is a diagnostic under that stronger reference model, not a general sequential-calibration test; values are not adjusted across the nine rows. The minimum possible value is $1/501$. Three to seven of the thirty possible bins hold thirty or more observations, so the statistic is dominated by a few cells.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + tail)
+ 
+@@ -245,7 +245,7 @@
+             r"\multicolumn{6}{l}{\emph{Mean net return, 5 bps per side (bps/day)}}\\",
+             r"\addlinespace[2pt]"]
+     foot = [r"\bottomrule\end{tabular}",
+-            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize One exploratory family of twelve contrasts, adjusted within itself and not comparable with Table~\ref{tab:joint}. Estimates are unrestricted minus IID for the first contrast and reversible minus unrestricted for the second; for both metrics a positive difference favours the first model. Intervals are simultaneous, from the single-step max-$|t|$ critical value of " + f"{results['joint_economic']['q95']:.3f}" + r"; the $p$-values are stepdown-adjusted. The Sharpe statistic is recomputed inside every bootstrap draw from the resampled days, so its sampling variability is that of a ratio rather than of a mean.}",
++            r"\par\smallskip\parbox{0.98\linewidth}{\footnotesize One exploratory family of twelve contrasts, adjusted within itself, with no joint error control across this family and Table~\ref{tab:joint}. Estimates are unrestricted minus IID for the first contrast and reversible minus unrestricted for the second; for both metrics a positive difference favours the first model. Intervals are simultaneous, from the single-step max-$|t|$ critical value of " + f"{results['joint_economic']['q95']:.3f}" + r"; the $p$-values are stepdown-adjusted. The Sharpe statistic is recomputed inside every bootstrap draw from the resampled days, so its sampling variability is that of a ratio rather than of a mean.}",
+             r"\end{table}"]
+     return "\n".join(head + rows + foot)
+ 
+--- v11/README.md
++++ v12/README.md
+@@ -1,46 +1,85 @@
+-# Revised manuscript v11
++# Revised manuscript v12
+ 
+-v11 closes the two statistical gaps left in v10: the Sharpe ratio now sits inside
+-a familywise adjustment, and calibration is tested rather than only summarised.
++Editorial and consistency revision, 16 November 2026. The original v11 ZIP was
++not modified. The English manuscript retains the study design, archived main
++results and original frozen estimator archive.
+ 
+-## What is new relative to v10
++## Read first
+ 
+-- **Table A11 is now one twelve-contrast economic family** — six mean net-return
+-  differences and six Sharpe differences, adjusted jointly. Four Sharpe contrasts
+-  survive: SPY and IWM gain on unrestricted minus IID (adjusted p = 0.032 and
+-  0.001) and lose on reversible minus unrestricted (0.006 and 0.007, negative
+-  estimates, against the restricted model). Among mean net returns only IWM's
+-  unrestricted advantage survives (0.022); its reversible contrast falls just
+-  outside (0.054). The Sharpe statistic is recomputed inside every bootstrap draw,
+-  so its sampling variability is that of a ratio rather than a mean.
+-- **Table A12 now carries a test.** A parametric bootstrap draws each day's
+-  outcome from that day's forecast and compares the same count-weighted
+-  calibration error. Every asset and model is rejected (p <= 0.004). The rejection
+-  is driven by the marginal: realised final-period class frequencies are
+-  29.9/37.3/32.9, 29.1/39.2/31.6 and 32.8/36.7/30.6 rather than one third each,
+-  because the cut points come from history. The text says so and does not claim a
+-  conditional calibration failure.
+-- Section 4.2 and the appendix text are updated; the claim that no calibration
+-  test exists is removed from three places.
++- `preprint_review_v12.pdf`: combined manuscript, tables, figures and appendix.
++- `修改说明_v12.md`: Chinese change report, corrected values and verification scope.
++- `revision_audit/v12_changes.diff`: complete source/code/documentation diff.
++- `revision_audit/v12_calibration_recheck.json`: recomputed aggregate calibration
++  statistics and fingerprints of the existing reconstructed forecast files.
++- `revision_audit/check_v12.py`: focused scientific/code regression checks.
++- `revision_audit/v12_verification.json`: checks performed in this revision.
+ 
+-## Carried over
++Historical v7--v11 audit files and scripts describe earlier revisions. They are
++retained for provenance, not treated as proof that the full analysis was rerun
++for v12. `修改说明_v11.md` is likewise historical.
+ 
+-Panel reconstruction; score components with IWM corrected; circulation; independent
+-estimator; threshold and window rules; time stability; controlled simulation;
+-Brier family; generated tables; the one-command pipeline.
++## Main corrections
+ 
+-## Still not done
++1. Report IWM's log-loss stepdown result accurately: p = 0.048 crosses 5%,
++   while Holm p = 0.056 and the single-step interval do not.
++2. Distinguish the log-loss, Brier and twelve-contrast economic families.
++3. Replace bootstrap-mean calibration point estimates with observed errors.
++   Keep the original block intervals and independent-draw reference probabilities.
++4. State the stronger assumptions of the calibration reference simulation;
++   remove unsupported attribution of its rejection to marginal imbalance.
++5. Correct circulation units, simulation transition/flow notation, the n=1,260
++   example, and the direction of the finite-sample bias--variance discussion.
++6. Enforce the stated 2.1e-5 gradient ceiling in the sensitivity solver fallback.
++   The frozen estimator ZIP is unchanged. Historical model fits were not rerun.
++7. Correct the documented pipeline command and cross-document references.
+ 
+-No redistribution of price or row-level data. Block-bootstrap coverage under
+-structural change remains unproven.
++## Build the PDF
+ 
+-## Reproducing
++From the package root, with Tectonic installed:
+ 
+-    python -m analysis.pipeline --work out --prices prices --package . all
+-    tectonic source/preprint.tex
++```text
++tectonic -k source/preprint.tex
++python source/prepare_crossrefs.py
++```
+ 
+-## Files
++This produces `source/preprint.pdf` and retains `source/preprint.aux`. To build
++the separate main manuscript, blind manuscript or appendix, first run those
++commands, then run the corresponding entry point:
+ 
+-- `revision_audit/v11_additions.json`: both families and the calibration test.
+-- `revision_audit/check_v11.py`: standard-library checks of the A.5 claims.
+-- `revision_audit/v11_changes.diff`: v10 to v11 source diff.
++```text
++tectonic source/manuscript.tex
++tectonic source/blind_manuscript.tex
++tectonic source/online_appendix.tex
++```
++
++These separate documents import only the required external label numbers from
++`main_crossrefs.aux` and `appendix_crossrefs.aux`, generated from `preprint.aux`.
++Regenerate them after changes to table, figure or section numbering. The separate
++print-oriented copies disable hyperlinks; the combined preprint retains links.
++
++## Verify this revision
++
++```text
++python revision_audit/check_v12.py
++```
++
++Requires NumPy, pandas and SciPy. The tests include a balanced synthetic example
++that distinguishes observed calibration error from its bootstrap mean, the
++solver acceptance guard, the simulation units and source reference consistency.
++They do not establish block-bootstrap coverage or repeat all market-data fits.
++
++## Recompute from locally supplied prices
++
++```text
++python -m analysis.pipeline --work out --prices prices --package . --stages all
++```
++
++See `analysis/README.md` for required inputs, stage outputs and verification
++coverage. This command can be computationally expensive; it was not executed
++end to end for the editorial revision. The existing reconstructed forecast
++files were sufficient to recheck the nine calibration rows. No new market-price
++retrieval was performed, and no row-level market data are included in this ZIP.
++
++Before submission, the author should confirm the target journal's format,
++original data provenance and availability statement. A permanent public code
++repository/DOI and a general sequential-calibration test are not supplied here.
+--- v11/revision_audit/check_v12.py
++++ v12/revision_audit/check_v12.py
+@@ -0,0 +1,91 @@
++"""Focused regression and document-consistency checks; no market-data refit.
++
++Run from the package root: python revision_audit/check_v12.py
++Requires the analysis dependencies (NumPy, pandas, SciPy).
++"""
++from pathlib import Path
++import sys, json, re
++from types import SimpleNamespace
++from unittest.mock import patch
++import numpy as np
++import pandas as pd
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT))
++from analysis import scores, simulation, tables, rules
++
++passed = []
++def check(name, condition):
++    if not condition:
++        raise AssertionError(name)
++    passed.append(name)
++    print('PASS', name)
++
++# Balanced outcomes and constant uniform probabilities have exactly zero
++# empirical bin error. Their bootstrap mean is positive and must not replace it.
++frame = pd.DataFrame({'target_state': np.tile(np.arange(3),10)})
++for m in scores.MODELS:
++    for k in ('down','neutral','up'):
++        frame[f'p_{m}_{k}'] = 1/3
++cfg = SimpleNamespace(assets=('TEST',), final=lambda _: frame)
++cal = scores.calibration(cfg, draws=30, block=2, seed=71)
++check('calibration point estimate is observed zero, not bootstrap mean',
++      all(abs(r['ece']) < 1e-14 and r['bootstrap_mean'] > .001 for r in cal))
++
++audit = json.loads((ROOT/'revision_audit/v12_calibration_recheck.json').read_text())
++old = json.loads((ROOT/'revision_audit/v11_additions.json').read_text())
++oldmap = {(r['asset'],r['model']):r for r in old['calibration']}
++check('all nine old calibration point estimates were bootstrap means',
++      len(audit['calibration'])==9 and all(r['bootstrap_mean_matches_v11'] for r in audit['calibration']))
++check('calibration intervals and reference probabilities preserved',
++      all(np.allclose(r['ci'],oldmap[(r['asset'],r['model'])]['ci'],rtol=0,atol=1e-12)
++          and abs(r['p_value']-oldmap[(r['asset'],r['model'])]['p_value'])<1e-14
++          for r in audit['calibration']))
++check('calibration table generated from corrected audit',
++      (ROOT/'source/tables/tab_calibration.tex').read_text().strip()==tables.calibration({'calibration':audit['calibration']}).strip())
++
++v9=json.loads((ROOT/'revision_audit/v9_additions.json').read_text())
++sim=dict(v9['simulation'],lengths=[250,500,1260,2520,5000])
++generated=tables.simulation({'simulation':sim})
++check('simulation circulation displayed in percentage points',
++      '& -0.7 &' in generated and '& -1.4 &' in generated and '& -0.0 &' not in generated)
++check('simulation table agrees with generator',
++      (ROOT/'source/tables/tab_simulation.tex').read_text().strip()==generated.strip())
++for j in [0.,-.007,-.014]:
++    P, actual=simulation.build(j)
++    check(f'generating matrix valid and circulation correct ({j})',
++          np.all(P>0) and np.allclose(P.sum(axis=1),1) and np.allclose(np.ones(3)/3@P,np.ones(3)/3)
++          and abs(actual-j)<1e-14)
++
++def fail_original(*args,**kwargs):
++    raise RuntimeError('synthetic solver failure')
++fake_models=SimpleNamespace(reversible_matrix=fail_original)
++fake_result=SimpleNamespace(fun=1.0,x=np.zeros(5))
++with patch.object(rules,'minimize',return_value=fake_result), patch.object(rules,'_grad',return_value=np.ones(5)):
++    try:
++        rules.reversible_fit(fake_models,np.tile(np.arange(3),5))
++    except RuntimeError:
++        rejected=True
++    else:
++        rejected=False
++check('fallback refuses a fit above the documented gradient limit',rejected)
++with patch.object(rules,'minimize',return_value=fake_result), patch.object(rules,'_grad',return_value=np.zeros(5)):
++    P, how, grad=rules.reversible_fit(fake_models,np.tile(np.arange(3),5))
++check('fallback accepts a finite feasible fit within tolerance',how=='fallback' and np.allclose(P.sum(axis=1),1))
++
++source='\n'.join(p.read_text(encoding='utf-8') for p in (ROOT/'source').rglob('*.tex'))
++labels=re.findall(r'\\label\{([^}]+)\}',source)
++refs=re.findall(r'\\(?:eqref|ref)\{([^}]+)\}',source)
++cites=[k.strip() for group in re.findall(r'\\cite[pt]?\{([^}]+)\}',source) for k in group.split(',')]
++bibs=re.findall(r'\\bibitem(?:\[[^\]]*\])?\{([^}]+)\}',source)
++check('every source reference and citation has a definition', set(refs)<=set(labels) and set(cites)<=set(bibs))
++body=(ROOT/'source/body.tex').read_text()
++check('IWM stepdown rejection and method sensitivity both stated',
++      'significant under stepdown ($p=0.048$)' in body and 'Holm ($p=0.056$)' in body)
++check('obsolete simulation value removed', '5.8\\times10^{-4}' not in body)
++component_audit=json.loads((ROOT/'revision_audit/v12_component_recheck.json').read_text())
++qqq=next(r for r in component_audit['components'] if r['asset']=='QQQ' and r['model']=='U')
++check('QQQ middle-component interval excludes zero in both prose and table',
++      component_audit['table_matches_saved_source'] and qqq['dA_ci'][1]<0
++      and '[-0.01850,-0.00456]' in body and 'QQQ interval just fails' not in body)
++print(f'{len(passed)} focused checks passed; no full refit or new bootstrap coverage claim.')
+--- v11/source/appendix_body.tex
++++ v12/source/appendix_body.tex
+@@ -160,11 +160,15 @@
+ \input{tables/tab_bins}
+ 
+ \subsection{Secondary families and calibration}\label{app:families}
+-Table~\ref{tab:jointbrier} applies the same stepdown procedure to the six Brier-score contrasts. Here QQQ and IWM both survive, with adjusted $p$-values of 0.006 and 0.041, and SPY does not (0.067). The Brier family is adjusted within itself: its $p$-values are not comparable with those of Table~\ref{tab:joint}, and the difference between the two score families is a difference in how the scores weight errors, not a contradiction. The claim in the text that only one asset shows a score advantage therefore refers to log loss and not to scores in general.
++Table~\ref{tab:jointbrier} applies the same stepdown procedure to the six Brier-score contrasts. Here QQQ and IWM both survive, with adjusted $p$-values of 0.006 and 0.041, and SPY does not (0.067). The Brier family is adjusted within itself: its $p$-values do not provide joint error control with Table~\ref{tab:joint}, and the difference between the two score families is a difference in how the scores weight errors, not a contradiction. For log loss, QQQ is significant across the reported correction methods and IWM is significant only under stepdown. The two score families should therefore be identified explicitly whenever significance is summarized.
+ 
+ Table~\ref{tab:jointecon} applies the procedure to one exploratory family of twelve economic contrasts: six mean net-return differences and six Sharpe differences, all at 5 basis points per side. Four Sharpe contrasts survive. SPY and IWM gain on unrestricted minus IID (adjusted $p=0.032$ and $0.001$) and lose on reversible minus unrestricted (0.006 and 0.007, with negative estimates, that is, against the restricted model). Among mean net returns only IWM's unrestricted advantage survives (0.022); its reversible contrast falls just outside (0.054), and the SPY and QQQ net contrasts do not survive (0.184 and 0.555). The family inherits the allocation rule and the cost scenario, and no power claim is made for it.
+ 
+-Table~\ref{tab:calibration} reports the count-weighted calibration error, its block-bootstrap interval and a parametric bootstrap p-value for the null that each day's outcome is drawn from that day's forecast. Every asset and model is rejected ($p\le0.004$). The rejection is driven by the marginal distribution rather than by the shape of the reliability curve: the cut points are estimated from history, and the final period realised class frequencies of 29.9/37.3/32.9 for SPY, 29.1/39.2/31.6 for QQQ and 32.8/36.7/30.6 for IWM, instead of one third each. The test therefore says that the level of the forecasts does not match the realised marginal; it does not identify a conditional calibration failure, and with only three to seven populated bins the individual cells carry little information.
++Table~\ref{tab:calibration} reports the observed count-weighted calibration error and a percentile interval from resampling forecast--outcome pairs in moving blocks. It also retains a separate simulation diagnostic: with all saved forecasts held fixed, 500 independent outcome sequences are drawn, each day from its forecast vector. The reported tail fraction is $(1+K)/501$, where $K$ counts simulated errors at least as large as the observed error. Its minimum attainable value is approximately 0.002. All nine values are at most 0.004 under this reference model, without adjustment across the nine diagnostics.
++
++This simulation assumes more than bin-level or sequential calibration. In an adaptive forecasting system, later probabilities depend on earlier outcomes; independently resampling outcomes while freezing the entire probability sequence does not regenerate that dependence. These tail fractions are consequently reported as reference-model diagnostics, not as a generally valid rejection of calibration under serial dependence or regime change. The block-bootstrap intervals and the independent-draw reference distribution also answer different questions; a positive percentile lower bound for this nonnegative error statistic is not itself a calibrated test of zero error.
++
++Realized final-period class frequencies are 29.9/37.3/32.9\% for SPY, 29.1/39.2/31.6\% for QQQ and 32.8/36.7/30.6\% for IWM (rounding can affect the sums). Historical terciles do not force these future frequencies to equal one-third. This imbalance is consistent with a marginal discrepancy for the nearly uniform IID forecast, but comparison with one-third alone cannot attribute the diagnostic for the time-varying Markov forecasts. Marginal calibration compares mean forecast probabilities with realized frequencies; conditional calibration requires more information. Only three to seven class--bin cells contain at least thirty observations, limiting detailed interpretation of the reliability curves.
+ 
+ \input{tables/tab_jointbrier}
+ 
+@@ -174,21 +178,23 @@
+ 
+ \clearpage
+ \section{Computational verification and limitations}
++This section distinguishes verification reported in the supplied replication record from checks performed for the present editorial revision. The latter checked manuscript--table consistency, corrected the simulation units and calibration point-estimate calculation, added an explicit numerical-acceptance check to the fallback solver, and re-evaluated calibration and score-component summaries on the existing reconstructed forecast files. It did not repeat every model fit, independent-optimizer run or simulation replication described below.
++
+ The original analysis used Python 3.12.6, NumPy 2.3.2, pandas 2.3.3, SciPy 1.18.1,
+ yfinance 1.8.0 and exchange\_calendars 4.13.2. State cutpoints are recomputed only
+ from information available at each origin. Missing, duplicate, invalid or
+ non-finite price records are rejected; calendar coverage is checked separately.
+ 
+-Fifteen synthetic checks cover a reversible cycle with a known analytic solution,
++The supplied verification record describes fifteen synthetic checks covering a reversible cycle with a known analytic solution,
+ sparse and random count histories, future-data perturbation, known scoring and
+ drawdown values, invalid data, command-line integration, calendar gaps, bootstrap
+ block structure, identical-model contrasts, reproducibility, short samples and
+-undefined Sharpe comparisons. A fresh environment reproduced the saved SPY
++undefined Sharpe comparisons. That record reports that a fresh environment reproduced the saved SPY
+ validation forecasts, calibration, numeric summaries and bootstrap comparisons
+ exactly. This is a validation-period refit, not a claim of a separate exact refit
+ of every final run.
+ 
+-A separate arithmetic audit checked all 8,298 asset/target records in the final
++The supplied record also reports a separate arithmetic audit of all 8,298 asset/target records in the final
+ period. It reconciled origin-specific historical thresholds, next-session timing,
+ target labels, probabilities, weights, turnover, costs, scores, portfolio metrics
+ and calibration with absolute and relative tolerances of $10^{-12}$.
+@@ -196,7 +202,7 @@
+ convergence; the maximum detailed-balance residual was
+ $2.7755575615628914\times10^{-17}$. The detailed-balance residual checks feasibility of a constraint imposed by the parameterization; it does not by itself establish numerical optimality. An independent estimator and multi-start comparison are reported below. These checks also do not establish bootstrap coverage under structural change.
+ 
+-The current revision adds exact score and daily-return identities, exposure summaries from the retained descriptive audit, and arithmetic transformations of reported aggregate estimates. The cost-only illustration and main-text Table 6 can be regenerated with the accompanying arithmetic script, \texttt{recompute.py}, in the \texttt{revision\_audit} directory. Those arithmetic checks alone did not rerun market-data estimation. The reconstruction reported below does rerun it, on a freshly retrieved panel, and reproduces the published final-period forecasts to the precision described there.
++Earlier revisions added exact score and daily-return identities, exposure summaries from the retained descriptive audit, and arithmetic transformations of reported aggregate estimates. The cost-only illustration and main-text Table 6 can be regenerated with the accompanying arithmetic script, \texttt{recompute.py}, in the \texttt{revision\_audit} directory. Those arithmetic checks alone did not rerun market-data estimation. The reconstruction reported below does rerun it, on a freshly retrieved panel, and reproduces the published final-period forecasts to the precision described there.
+ 
+ Exact probability-bin replication uses round-trip floating-point parsing.
+ Otherwise, a decimal value at a bin boundary can move across the boundary after
+@@ -215,9 +221,9 @@
+ optimization is justified by the present evidence.
+ 
+ \subsection{Reconstructed panel and independent estimator}\label{app:reconstruction}
+-The archived snapshot is not distributed. To test whether the published estimates depend on that particular file, the panel was rebuilt from a fresh retrieval of the same public vendor series, using the adjustment convention of the original adapter, and the unmodified package was rerun. Record counts (8,288, 6,746 and 6,438 through 31 December 2025) and first and last dates match the stored fingerprint, while the normalized-file hashes do not, because the vendor revises historical records. Table~\ref{tab:repro} compares the resulting final-period estimates with the published ones.
+-
+-Why the estimates can agree while the hashes differ is worth stating precisely. The realised open-to-close return is invariant to a same-session adjustment factor, but the cut points are not invariant to a revised price level: a revision moves a quantile, and a training session whose return sits on the other side of the moved cut point changes the transition counts. For QQQ, two of the 2,766 target returns lie within $10^{-5}$ of a cut point at their origin and none within $10^{-6}$; the IID log loss is identical to six decimals, so at most a handful of labels can have moved. The unrestricted-minus-IID difference, which also depends on the estimated transition rows, changes in the sixth decimal. We do not claim that the state sequence is bit-identical, and we cannot attribute the difference to individual records without the archived file.
++The archived snapshot is not distributed. To test whether the published estimates depend on that particular file, the panel was rebuilt from a fresh retrieval of the same public vendor series, using the adjustment convention of the original adapter, and the unmodified package was rerun. Record counts (8,288, 6,746 and 6,438 through 31 December 2025) and first and last dates match the stored fingerprint, while the normalized-file hashes differ. Historical vendor revisions are a possible explanation; the supplied records do not isolate their contribution. Table~\ref{tab:repro} compares the resulting final-period estimates with the published ones.
++
++A common multiplicative adjustment to a session's open and close leaves its return, and therefore return-based cut points, unchanged. A revision that changes $C/O$ can instead alter historical quantiles, state labels and transition counts. For QQQ, the supplied reconstruction reports two of the 2,766 target returns within $10^{-5}$ of an origin-specific cut point and none within $10^{-6}$. This proximity check does not bound how many historical labels changed. Nor does agreement in IID log loss to six decimals establish label agreement, because the IID forecast is nearly uniform. The unrestricted-minus-IID difference changes in the sixth decimal. Without the archived panel, the affected records and the precise cause of the difference cannot be identified.
+ 
+ \begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{7pt}
+ \caption{Reproduction against the published final-period estimates}\label{tab:repro}
+@@ -228,7 +234,7 @@
+ QQQ & 6,746 & 2,766 & 1.098673 & 1.098673 & $-$0.011697 / $-$0.011699\\
+ IWM & 6,438 & 2,766 & 1.098647 & 1.098647 & $-$0.004942 / $-$0.004942\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted. The reconstructed column applies the frozen code to the rebuilt panel without modification. The QQQ difference of $2\times10^{-6}$ reflects individual vendor revisions; no target return lies within $10^{-6}$ of a cut point at its origin and the signed conclusions are unchanged. The realized open-to-close returns that the models classify are invariant to a same-session adjustment factor, which is why the hashes can differ while the estimates agree.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted. The reconstructed column applies the frozen code to the rebuilt panel without modification. The QQQ difference is $2\times10^{-6}$; the supplied records do not identify its record-level cause; no target return lies within $10^{-6}$ of a cut point at its origin and the signed conclusions are unchanged. The realized open-to-close returns that the models classify are invariant to a same-session adjustment factor, so differing price-file hashes need not imply different intraday returns.}
+ \end{table}
+ 
+ The reversible estimator was also reimplemented independently. The smoothed likelihood was written in the six flow masses and optimized directly on the simplex by sequential quadratic programming with numerical gradients, in contrast to the softmax parameterization, analytic gradient and BFGS of the retained code. At all 2,766 final-period origins per asset the two solutions agree to $|\Delta\,\text{NLL}|\le7.3\times10^{-12}$ and $|\Delta P|\le2.2\times10^{-8}$ in every fitted entry. Ten random starts per origin, at every twenty-fifth origin, never improved on the retained fit by more than $1.8\times10^{-12}$ nats. The retained fits are therefore taken as numerical optima of the stated objective, without claiming global optimality for the parameterization as such.
+--- v11/source/blind_manuscript.tex
++++ v12/source/blind_manuscript.tex
+@@ -3,7 +3,9 @@
+ \usepackage[T1]{fontenc}
+ \usepackage{lmodern,amsmath,amssymb,graphicx,booktabs,longtable,array}
+ \usepackage[round,authoryear]{natbib}
+-\usepackage[hidelinks]{hyperref}
++\usepackage{xr}
++\usepackage[draft,hidelinks]{hyperref}
++\externaldocument{appendix_crossrefs}
+ \usepackage{xurl}
+ \usepackage{microtype}
+ \newif\ifblind
+--- v11/source/body.tex
++++ v12/source/body.tex
+@@ -1,20 +1,24 @@
+ \begin{abstract}
+-Does detailed balance improve financial state forecasts or their value under a fixed allocation rule? An expanding-window comparison evaluates IID, unrestricted three-state Markov and reversible Markov forecasts of next-session open-to-close return terciles. Thresholds use only historical observations. SPY is the primary asset; QQQ and IWM are related-asset robustness applications. Each contributes 2,766 forecasts over 2015--2025. The unrestricted chain has the lowest point-estimate log loss and Brier score for every asset, but a Romano--Wolf stepdown over the six score contrasts leaves only QQQ decisively distinguishable from IID; IWM sits at the 5\% boundary and SPY does not reach it. Reversible-minus-unrestricted log-loss intervals include zero for all three assets. Exposure remains between 47.08\% and 52.73\% and the rule trades a round trip each day; at five basis points per side all three allocations lose more than 64\% cumulatively. An exact daily-return decomposition separates fixed half exposure from the probability-driven adjustment; approximate unrestricted-minus-IID mean net improvements are only 0.043, 0.020 and 0.073 basis points per day. Decomposing the scoring loss, the SPY and QQQ gains come almost entirely from the middle-versus-outer tercile component, whereas IWM also gains on the conditional upper-versus-lower component that the allocation weights far more heavily. The fitted unrestricted chains carry a non-zero circulation at every evaluation origin, with period means between 0.8 and 1.4 percentage points of daily flow, which detailed balance sets to zero by construction; the score cost of that removal stays inside a zero-including interval. Under fixed cut points, rolling estimation windows and a common start date the comparisons keep their sign, while five of the fifteen asset-by-rule intervals no longer exclude zero. A controlled simulation reproduces the sign and order of magnitude of that cost at the observed training lengths, without identifying it as the cause of the ranking. The evidence establishes neither a forecast advantage from detailed balance nor profitability of this allocation at the primary cost. It does not establish equivalence of the forecast models or absence of economic value under other decision rules.
++Detailed balance removes directional cycle flow from a Markov model, potentially reducing estimation variance at the cost of restriction bias. We evaluate this trade-off for next-session open-to-close return terciles in SPY, QQQ and IWM, using 2,766 forecasts per asset over 2015--2025. An expanding-window design compares IID, unrestricted three-state Markov and reversible Markov forecasts under common information sets and a fixed intraday allocation rule. The unrestricted model has the lowest log loss and Brier score for each asset. Across six log-loss contrasts, Romano--Wolf adjusted $p$-values for unrestricted versus IID are 0.093, 0.008 and 0.048, respectively; the IWM result is sensitive to the adjustment method. No reversible-minus-unrestricted log-loss interval excludes zero. A score decomposition places most SPY and QQQ improvement in middle-versus-outer tercile prediction, to which the allocation is locally less sensitive; IWM also improves conditional upper-versus-lower prediction. Mean net gains over IID are only 0.043, 0.020 and 0.073 basis points per day. With exposure near one-half and daily entry and exit, all nine model allocations lose more than 64\% cumulatively at five basis points per side. Alternative estimation rules preserve the full-period ranking, but calendar segments reveal substantial instability. These results provide no demonstrated forecast benefit from detailed balance in this design. They distinguish modest probability-score gains from profitability under a particular decision rule, without establishing model equivalence or ruling out economic value under other rules.
+ \end{abstract}
++
+ \noindent\textbf{Keywords:} Markov chains; detailed balance; probabilistic forecasting; intraday returns; transaction costs; time reversibility.
+ 
+ \section{Introduction and related research}
+-Detailed balance restricts directional dependence while preserving a transparent probability model. This study compares that restriction with an unrestricted chain and an IID baseline, using identical information sets and an unchanged allocation rule. Its contribution is a controlled financial application with explicit separation of probability accuracy, the information used by the allocation, and the cost of implementing that allocation. The reversible estimator itself is established methodology.
+-
+-Statistical forecast accuracy need not rank decisions by economic value \citep{Granger2000,Diebold1995}. Proper scores evaluate reported probabilities \citep{Gneiting2007}; trading outcomes also depend on return magnitudes, exposure and costs. Predictability and economic value can vary across periods \citep{Pesaran1995}, and small statistical improvements can be economically useful under other portfolio mappings \citep{Campbell2008}. Thus, negative trading results here cannot invalidate probabilistic forecasting generally.
+-
+-Holding intervals also matter. ETF evidence distinguishes trading from non-trading returns \citep{Kelly2011}. Opening-price pressure is documented among attention-attracting stocks \citep{Berkman2012}; overnight and intraday components can exhibit continuation within periods and reversal across them \citep{Lou2019}. Beta-return relationships differ between night and day \citep{Hendershott2020}, while futures returns can concentrate outside US cash-market hours \citep{Bondarenko2023}. These findings motivate timing discipline, not a universal negative intraday premium.
+-
+-Time irreversibility has an established econometric tradition: time-domain asymmetry tests \citep{Ramsey1996}, bispectral tests \citep{Hinich1998}, and distribution-based tests without moment restrictions \citep{Chen2000}. Stock-index evidence connects irreversibility with volatility asymmetry \citep{Chen2002}; other representations include multiscale volatility \citep{Zumbach2009} and visibility graphs \citep{Lacasa2016}. Finite-state reversible/irreversible decompositions already exist \citep{McCausland2007}, as do reversible estimation methods \citep{Trendelkamp2015}. Forecast ranking under the present discretization is not a test of market-wide reversibility.
+-
+-Two questions organize the comparison. First, under identical historical information within each asset, does detailed balance improve out-of-sample state probabilities relative to unrestricted Markov and IID forecasts? Second, do identifiable probability-score gains translate into economic gains under a fixed intraday allocation with two-sided costs? Forecast evaluation and trading evaluation therefore remain separate empirical comparisons. The original experiment is supplemented here by algebraic decompositions, by a reconstruction of the daily panel that allows component, circulation and fixed-half statistics to be computed from recorded paths, and by an independent reimplementation of the constrained estimator. These additions interpret and verify the completed experiment. They are not new prespecified hypotheses, and the reconstruction reproduces the archived estimates rather than replacing them with a different design.
+-
+-\section{Design and estimators}
++Can a structural restriction improve financial probability forecasts, and does any improvement matter for an investment decision? Detailed balance offers a tractable setting for these questions. In a three-state Markov chain it removes one directional circulation parameter while retaining state dependence. The restriction can reduce estimation variance, but it can also discard predictive information when the data-generating process is irreversible. This study evaluates that trade-off using next-session open-to-close return terciles and a fixed allocation rule for three US equity ETFs.
++
++Statistical forecast accuracy and economic value answer different questions \citep{Granger2000,Diebold1995}. Proper scores evaluate the full probability vector \citep{Gneiting2007}, whereas an allocation uses a particular function of that vector and is also exposed to return magnitudes and implementation costs. Predictability and economic value can vary over time \citep{Pesaran1995}; small statistical improvements can be useful under some portfolio mappings \citep{Campbell2008}. A negative trading result under one mapping therefore does not invalidate probabilistic forecasting generally.
++
++The holding interval makes this distinction especially relevant. Trading and non-trading ETF returns differ \citep{Kelly2011}; opening-price pressure, overnight--intraday return patterns and time-of-day variation in risk premia are documented in related markets \citep{Berkman2012,Lou2019,Hendershott2020,Bondarenko2023}. These studies motivate precise entry and exit timing. They do not imply a universal negative intraday premium or determine the execution cost of the ETFs considered here.
++
++Time irreversibility also has an established econometric literature, including time-domain, frequency-domain and distribution-based tests \citep{Ramsey1996,Hinich1998,Chen2000}. Financial applications connect irreversibility with volatility asymmetry and alternative time-series representations \citep{Chen2002,Zumbach2009,Lacasa2016}. Finite-state reversible/irreversible decompositions and reversible estimation methods are already available \citep{McCausland2007,Trendelkamp2015}. The contribution here is an empirical evaluation of a restriction, not a new estimator or a test of market-wide reversibility.
++
++The design links three comparisons. First, identical historical information within each asset isolates the forecast difference between IID, unrestricted Markov and reversible Markov models. Second, an exact log-loss factorization shows which probability components improve and how the allocation responds to them. Third, a daily-return identity separates fixed half exposure, the probability-driven adjustment and trading cost. Circulation paths, alternative estimation rules and a controlled simulation help interpret the restriction. SPY is the primary application; QQQ and IWM are related-asset extensions rather than independent replications.
++
++The unrestricted chain ranks first on both scores for all three assets, but the statistical evidence depends on the asset and adjustment method. Detailed balance provides no demonstrated log-loss advantage. Under the fixed daily round-trip rule, small incremental gains coexist with large absolute losses at the primary cost. The full-period score ranking also masks deterioration in the later calendar segment. The decompositions, reconstructed-panel checks and simulation are retrospective extensions of the completed experiment; they are exploratory and do not create a new untouched evaluation sample.
++
++\section{Design and estimators}\label{sec:design}
++\subsection{Data, timing and state construction}
+ Adjusted daily Open and Close observations were retrieved on 13 November 2026 from Yahoo Finance through yfinance 1.8.0. Table~\ref{tab:data} describes available histories. The final sample is 2 January 2015--31 December 2025 for all assets. Session coverage matches an XNYS reference calendar; this checks dates, not price accuracy or executable fills.
+ 
+ \begin{equation}
+@@ -28,6 +32,7 @@
+ 
+ At the first final-test origin, SPY, QQQ and IWM have 5,522, 3,980 and 3,672 historical daily observations, respectively: all exceed the minimum, but their initial expanding windows are not equal in length.
+ 
++\subsection{Forecast estimators}
+ Let $N_{ij,t}=\sum_{u=1}^{t-1}\mathbf{1}\{s_{u\mid t}=i,s_{u+1\mid t}=j\}$ count adjacent historical transitions and let $\alpha=1$. The IID forecast uses destination labels $s_{2\mid t},\ldots,s_{t\mid t}$:
+ \begin{equation}
+ p^{\mathrm{IID}}_{t,j}=\frac{\sum_{i=1}^3N_{ij,t}+\alpha}{t-1+3\alpha}.
+@@ -42,7 +47,7 @@
+ \begin{equation}
+ \begin{gathered}
+ \sum_{i,j}(N_{ij,t}+\alpha)\log P_{ij,t},\\
+-\text{subject to }X=X^\top>0,\quad \sum_{i,j}X_{ij}=1,\quad
++\text{subject to }X=X^\top,\quad X_{ij}>0\ \text{for all }i,j,\quad \sum_{i,j}X_{ij}=1,\\
+ \pi_i=\sum_jX_{ij},\quad P_{ij}=X_{ij}/\pi_i.
+ \end{gathered}
+ \label{eq:reversible}
+@@ -64,7 +69,7 @@
+ b_{t+1}=\sum_{j=1}^3\left(p_{t,j}-\mathbf{1}\{y_{t+1}=j\}\right)^2.
+ \label{eq:scores}
+ \end{equation}
+-Calibration uses ten fixed bins per class. Empty bins supply no evidence and bin averages do not display the full range of forecasts; Appendix~\ref{app:families} adds a count-weighted summary of the same bins with an interval and a joint test, which is a different object from the plotted averages.
++Calibration diagnostics use ten fixed bins per class. Empty bins supply no evidence, and bin averages do not display the full range of forecasts. Appendix~\ref{app:families} reports a count-weighted error, a block-bootstrap interval and a simulation reference that assumes independent outcomes conditional on the frozen probability sequence. That reference is more restrictive than calibration alone.
+ 
+ To distinguish the information rewarded by the score from that used in the allocation, define $m_t=p_{t,2}$ and $q_t=p_{t,3}/(p_{t,1}+p_{t,3})$. Let $z_{t+1}=\mathbf{1}\{y_{t+1}=2\}$ and $u_{t+1}=\mathbf{1}\{y_{t+1}=3\}$. Positivity from smoothing makes these quantities well defined. The log loss factors exactly as
+ \begin{equation}
+@@ -93,7 +98,7 @@
+ R_{t+1}(c)=G_{t+1}-cT_{t+1}.
+ \label{eq:net}
+ \end{equation}
+-Primary cost is $c=0.0005$ per side, with 1/10/25 bps sensitivities. Costs use starting notional, omitting exact exit-notional adjustment, impact and auction slippage. Approximately half exposure implies approximately one unit of turnover daily, even if consecutive weights are unchanged.
++The primary cost is $c=0.0005$ (5 basis points, bps) per side, with sensitivities at 1, 10 and 25 bps. Costs use starting notional, omitting exact exit-notional adjustment, impact and auction slippage. Approximately half exposure implies approximately one unit of turnover daily, even if consecutive weights are unchanged.
+ 
+ Define $\delta_t=w_t-1/2$. Under the same accounting, the net return separates exactly into
+ \begin{equation}
+@@ -113,38 +118,42 @@
+ Net returns are compounded. Sharpe uses $\sqrt{252}\,\bar R/s_R$ with zero risk-free return; drawdown includes initial capital. This conventional scaling is not serial-dependence adjusted \citep{Lo2002}. Cash and daily fully invested intraday exposure are timing-matched benchmarks.
+ 
+ \subsection{Inference and its scope}
+-Paired non-circular moving blocks \citep{Kunsch1989} generate 5,000 resamples, seed 20261113, length 20 primary and 10/60 sensitivity. Percentile intervals condition on saved predictions, do not refit models, and are not multiplicity adjusted in themselves; Section~\ref{sec:joint} supplies a joint adjustment for the six score contrasts. They concern reversible-minus-unrestricted and unrestricted-minus-IID differences; an interval containing zero does not establish equivalence. These intervals summarize variability of paired realized losses or returns in the saved forecast evaluation, under the dependence assumptions of block resampling. They do not regenerate threshold estimation, parameter estimation or design selection across new histories. Parameter estimation can affect forecast-evaluation inference \citep{West1996}; no general coverage result is asserted here for the expanding-window, moving-threshold procedure. Block-length sensitivity does not by itself resolve structural change. SPY is the primary application, while the multiple metrics and related-ETF comparisons remain pointwise evidence rather than a familywise or independent-replication claim.
++Paired non-circular moving blocks \citep{Kunsch1989} generate 5,000 resamples with seed 20261113. Block length is 20 sessions in the primary analysis and 10 or 60 in sensitivity checks. Within each comparison, the same sampled days are used for both models. The contrasts are unrestricted minus IID and reversible minus unrestricted; negative score differences favor the first model, whereas positive return and Sharpe differences favor it. Percentile intervals are pointwise unless explicitly labeled simultaneous. An interval containing zero does not establish equivalence.
++
++Three families are distinguished: six log-loss contrasts across the three assets, six Brier contrasts, and an exploratory family of twelve economic contrasts comprising six mean net-return and six Sharpe differences. Each family is adjusted separately using aligned block draws across assets and contrasts (Section~\ref{sec:joint}; Appendix~\ref{app:families}). There is no adjustment across the three families. Component, calendar-segment and alternative-rule intervals remain exploratory and pointwise.
++
++Resampling conditions on the saved forecast paths and does not refit thresholds or model parameters. It measures variation in the realized paired loss or return sequences under the dependence assumptions of block resampling, without regenerating estimation or design selection across new histories. Parameter estimation can affect forecast-evaluation inference \citep{West1996}; no general coverage result is asserted for this expanding-window procedure with changing thresholds. Block-length sensitivity does not resolve structural change, and the related ETFs do not provide independent replications.
+ 
+ \section{Results and interpretation}
+ \subsection{Forecast accuracy}
+-Table~\ref{tab:scores} reports the lowest log loss and Brier score for the unrestricted chain on all assets. Reversible-minus-unrestricted log-loss differences are 0.001315, 0.000685 and 0.001595 for SPY, QQQ and IWM. All primary intervals contain zero (Table~\ref{tab:intervals}). Unrestricted-minus-IID intervals lie below zero pointwise for all three assets, although only QQQ survives the joint adjustment of Section~\ref{sec:joint}. Related ETFs are not independent replications. Online Appendix A supplies development/validation context and full inference sensitivities. Relative to IID mean log loss, the unrestricted reductions are approximately 0.484\%, 1.065\% and 0.450\% (Table~\ref{tab:scale}). These are reductions in a scoring loss, not percentage-point gains in classification accuracy or investment returns. The intervals for reversible-minus-unrestricted differences neither demonstrate a reversible advantage nor exclude every practically relevant difference.
+-
+-\subsection{Joint inference across the six score contrasts}\label{sec:joint}
+-Table~\ref{tab:scores} and Table~\ref{tab:intervals} report six primary score contrasts, two per asset. Read one at a time, three of them exclude zero. That reading ignores two things: the six statistics are computed on the same 2,766 sessions for three highly correlated funds, and separate 95\% intervals do not control the probability of at least one false exclusion.
+-
+-We therefore test the six contrasts jointly. The daily paired loss differences are aligned on the common target sessions and resampled with the same moving-block indices in every draw, so that dependence across assets and across contrasts is preserved. Observed statistics are standardized by the bootstrap standard deviation, and adjusted p-values follow the Romano--Wolf stepdown: the maximum statistic is first screened over all six hypotheses, and then over the hypotheses not yet rejected. A single-step max-$|t|$ critical value supplies simultaneous intervals; because it controls the family in one step it is more conservative than the stepdown test, and the two procedures need not agree at the boundary.
+-
+-Table~\ref{tab:joint} gives the result. Only the QQQ unrestricted-minus-IID contrast is decisive (stepdown-adjusted $p=0.008$, simultaneous interval $[-0.0210,-0.0024]$). IWM sits exactly on the boundary: its stepdown p-value is 0.048, just below 5\%, while its single-step simultaneous interval still contains zero and Holm's procedure on the same raw p-values gives 0.056. We therefore report IWM as unresolved rather than rejected. SPY is not rejected either (0.093 and 0.097). No reversible-minus-unrestricted contrast approaches significance; the smallest adjusted p-value is 0.19.
++Table~\ref{tab:scores} reports the lowest log loss and Brier score for the unrestricted chain on all assets. Reversible-minus-unrestricted log-loss differences are 0.001315, 0.000685 and 0.001595 for SPY, QQQ and IWM. All primary intervals contain zero (Table~\ref{tab:intervals}). Unrestricted-minus-IID intervals lie below zero pointwise for all three assets, while QQQ and IWM cross the 5\% threshold under the stepdown adjustment of Section~\ref{sec:joint}; IWM does not do so under the other reported familywise procedures. Related ETFs are not independent replications. Online Appendix A supplies development/validation context and full inference sensitivities. Relative to IID mean log loss, the unrestricted reductions are approximately 0.484\%, 1.065\% and 0.450\% (Table~\ref{tab:scale}). These are reductions in a scoring loss, not percentage-point gains in classification accuracy or investment returns. The intervals for reversible-minus-unrestricted differences neither demonstrate a reversible advantage nor exclude every practically relevant difference.
++
++\subsection{Joint inference across the six log-loss contrasts}\label{sec:joint}
++Table~\ref{tab:scores} and Table~\ref{tab:intervals} report six primary log-loss contrasts, two per asset. Read one at a time, three of them exclude zero. That reading ignores two things: the six statistics are computed on the same 2,766 sessions for three highly correlated funds, and separate 95\% intervals do not control the probability of at least one false exclusion.
++
++We therefore test the six contrasts jointly. The daily paired loss differences are aligned on the common target sessions and resampled with the same moving-block indices in every draw, so that dependence across assets and across contrasts is preserved. Observed statistics and centered bootstrap draws use the same bootstrap standard deviation for each contrast (the standard error is not re-estimated within each draw), and two-sided adjusted $p$-values follow a Romano--Wolf stepdown procedure \citep{RomanoWolf2005}: the maximum statistic is first screened over all six hypotheses, and then over the hypotheses not yet rejected. A single-step max-$|t|$ critical value supplies simultaneous intervals; because it controls the family in one step it is more conservative than the stepdown test, and the two procedures need not agree at the boundary.
++
++Table~\ref{tab:joint} gives the result. QQQ's unrestricted-minus-IID contrast is significant under all three reported procedures: stepdown-adjusted $p=0.008$, Holm-adjusted $p=0.010$, and a simultaneous interval of $[-0.0210,-0.0024]$. IWM is significant under stepdown ($p=0.048$) but not under Holm ($p=0.056$), and its single-step simultaneous interval contains zero. We therefore report a method-sensitive rejection for IWM, rather than treating all familywise procedures as yielding the same decision. SPY is not significant under either adjusted test ($p=0.093$ and $0.097$). None of the reversible-minus-unrestricted contrasts is significant; the smallest stepdown-adjusted $p$-value is 0.191. Familywise interpretation remains conditional on the validity of the underlying block-bootstrap approximation.
+ 
+ Two further families are reported in Appendix~\ref{app:families}: six Brier-score contrasts, and one exploratory economic family of twelve contrasts covering mean net returns and Sharpe ratios, each adjusted within itself. The Brier contrasts reject for QQQ (adjusted $p=0.006$) and IWM (0.041) but not SPY (0.067). In the economic family the Sharpe contrasts reject for SPY and IWM on both comparisons, while among mean net-return contrasts only IWM's unrestricted advantage survives (0.022). These are separate families, not additional corrections of the six log-loss contrasts, and the statements below about score advantage are statements about log loss.
+ 
+-The primary conclusion is unaffected: under every multiplicity convention, detailed balance shows no advantage. The secondary conclusion does change. The statement that the unrestricted chain has the lowest log loss for every asset is true of the point estimates and false as a familywise statement: it is a QQQ result, with IWM unresolved at the boundary and SPY not distinguishable.
++The substantive ranking and the strength of evidence should be kept separate. Detailed balance has no demonstrated log-loss advantage under the reported procedures. The unrestricted model has the lowest point estimate for every asset; its advantage over IID has consistent familywise support for QQQ, method-sensitive support for IWM, and no rejection for SPY.
+ 
+ \subsection{Which score component carries the improvement}\label{sec:components}
+ Equation~\eqref{eq:scorefactor} splits each realized log loss into a middle-versus-outer term and a conditional upper-versus-lower term. Table~\ref{tab:components} reports the mean of each term in the saved final forecasts, its paired difference against IID, and a percentile interval from the same moving-block design used for the total loss.
+ 
+-The unrestricted advantage is concentrated in the first term for SPY and QQQ. Mean reductions are 0.00535 and 0.01163; the SPY interval lies below zero and the QQQ interval just fails to (upper limit $+0.00004$). Their conditional terms move by $+0.00004$ and $-0.00007$, both indistinguishable from zero. IWM is the exception. Its middle-versus-outer reduction of 0.00363 has an interval containing zero, while its conditional reduction of 0.00131 excludes zero and accounts for 26.5\% of its total reduction of 0.00494. Two assets gain nothing in the component the allocation responds to most; one does.
+-
+-The position rule makes that distinction concrete. With $w_t=\tfrac12+\tfrac12(1-m_t)(2q_t-1)$, the local sensitivities are $\partial w/\partial m=-(2q_t-1)/2$ and $\partial w/\partial q=1-m_t$. Across the saved final forecasts the mean of $|\partial w/\partial m|$ is 0.015 and the mean of $\partial w/\partial q$ is 0.66, so the allocation is roughly forty times more sensitive to the conditional upper-versus-lower probability than to the middle-versus-outer one. A score improvement confined to $m_t$ therefore reaches the rule only weakly, and IWM is the one asset whose improvement is not confined there.
+-
+-The reversible chain reproduces the first term within noise: differences from the unrestricted chain are $-0.00013$, $+0.00034$ and $-0.00008$, all intervals containing zero. It loses ground in the second term, by $+0.00144$, $+0.00035$ and $+0.00167$, with the SPY and IWM intervals above zero. That second term carries the directional asymmetry that detailed balance removes, and it is where IWM's gain came from. The restriction therefore costs little where two assets gained and costs more where the third gained; the component pattern, like the total, gives no reason to prefer it. These are conditional descriptions of saved forecasts, not tests of a mechanism.
++The unrestricted advantage is concentrated in the first term for SPY and QQQ. Mean reductions are 0.00535 and 0.01163, and both pointwise intervals lie below zero: $[-0.00993,-0.00088]$ for SPY and $[-0.01850,-0.00456]$ for QQQ. Their conditional terms move by $+0.00004$ and $-0.00007$, both indistinguishable from zero. IWM is the exception. Its middle-versus-outer reduction of 0.00363 has an interval containing zero, while its conditional reduction of 0.00131 excludes zero and accounts for 26.5\% of its total reduction of 0.00494. Thus, the conditional component shows no detectable improvement for SPY or QQQ, while IWM has a pointwise improvement in that component.
++
++The position rule makes that distinction concrete. With $w_t=\tfrac12+\tfrac12(1-m_t)(2q_t-1)$, the local sensitivities are $\partial w/\partial m=-(2q_t-1)/2$ and $\partial w/\partial q=1-m_t$. Across the unrestricted model's saved final forecasts, the mean of $|\partial w/\partial m|$ is approximately 0.015 and the mean of $\partial w/\partial q$ is 0.66, so the allocation is roughly forty times more sensitive to the conditional upper-versus-lower probability than to the middle-versus-outer one. These derivatives compare equal local changes in the two probability coordinates; their ratio is not an attribution of realized return gains. A middle-tercile score improvement can have little effect on exposure when $q_t$ is close to one-half.
++
++The reversible chain reproduces the first term within noise: differences from the unrestricted chain are $-0.00013$, $+0.00034$ and $-0.00008$, all intervals containing zero. It loses ground in the second term, by $+0.00144$, $+0.00035$ and $+0.00167$, with the SPY and IWM intervals above zero. The larger component differences occur in the conditional upper-versus-lower term, which also contributes to IWM's gain over IID. This alignment is descriptive: the conditional score is not a circulation statistic, and imposing detailed balance can change both components. The component intervals are pointwise and do not identify a causal mechanism.
+ 
+ \subsection{What detailed balance removes: circulation flows}\label{sec:circulation}
+-For a stationary distribution $\pi$ and transition matrix $P$, the net probability flow from $i$ to $j$ is $J_{ij}=\pi_iP_{ij}-\pi_jP_{ji}$. Stationarity makes the three independent entries equal, $J_{12}=J_{23}=J_{31}=j_t$, so one scalar measures the mass rotating around the state cycle at each origin. Detailed balance is $j_t=0$, which the reversible parameterization imposes by construction. Because terciles are equal-count cutpoints, the fitted stationary distribution stays within $4\times10^{-4}$ of uniform at every origin, and $j_t$ is then approximately one third of the corresponding pairwise difference in transition probabilities.
++For a stationary distribution $\pi$ and transition matrix $P$, the net probability flow from $i$ to $j$ is $J_{ij}=\pi_iP_{ij}-\pi_jP_{ji}$. Stationarity makes the three independent entries equal, $J_{12}=J_{23}=J_{31}=j_t$, so one scalar measures the mass rotating around the state cycle at each origin. Detailed balance is $j_t=0$, which the reversible parameterization imposes by construction. In this sample, the fitted stationary distribution stays within $4\times10^{-4}$ of uniform at every origin, and $j_t$ is then approximately one third of the corresponding pairwise difference in transition probabilities.
+ 
+ Figure~\ref{fig:circulation} plots $j_t$ for the three assets and Table~\ref{tab:circulation} summarizes it. The scalar is negative at every one of the 2,766 evaluation origins for every asset, with means of $-1.40$, $-0.77$ and $-1.32$ percentage points of daily flow. In the period-average matrices the three pairwise differences have nearly equal magnitude: for SPY, $P(\text{Up}\mid\text{Down})-P(\text{Down}\mid\text{Up})=+4.2$ and the two other pairs are $-4.2$ percentage points; the corresponding magnitudes are 2.3 for QQQ and 4.0 for IWM. The reversible fit imposes $\pi_iP_{ij}=\pi_jP_{ji}$. With the estimated stationary distribution that close to uniform, its fitted entries are within $3\times10^{-4}$ of pairwise averages, and it shifts individual off-diagonal entries by 1.2 to 2.1 percentage points. That near-equality of entries is a property of this estimate, not of the estimator: when the stationary distribution is not uniform, detailed balance does not imply $P_{ij}=P_{ji}$.
+ 
+-The series is highly persistent, with first-order autocorrelation between 0.990 and 0.997. The agreement in sign across origins is therefore not 2,766 independent confirmations; it describes one persistent feature of this sample, and the annual means move by at most a few tenths of a point. Removing that feature costs 0.0007 to 0.0016 nats of log loss, an interval that contains zero (Table~\ref{tab:intervals}). The fitted chain carries the asymmetry at every origin and the restriction removes it by construction, but whether the population chain does so cannot be settled here: an expanding-window path reuses almost all of its history between adjacent origins, so persistence is expected even if the underlying circulation is zero. No test of $j=0$ in the population is performed. Section~\ref{sec:simulation} quantifies the cost of the restriction under generating processes whose circulation is known; that explains a mechanism under stated assumptions and does not identify it in these data.
++The series is highly persistent, with first-order autocorrelation between 0.990 and 0.997. The agreement in sign across origins is therefore not 2,766 independent confirmations; it describes one persistent feature of this sample, and the annual means move by at most a few tenths of a point. The reversible-minus-unrestricted point estimates range from 0.0007 to 0.0016 nats of log loss; each asset-specific confidence interval contains zero (Table~\ref{tab:intervals}). The fitted chain carries the asymmetry at every origin and the restriction removes it by construction, but whether the population chain does so cannot be settled here: an expanding-window path reuses almost all of its history between adjacent origins, so persistence is expected even if the underlying circulation is zero. No test of $j=0$ in the population is performed. Section~\ref{sec:simulation} quantifies the cost of the restriction under generating processes whose circulation is known; that explains a mechanism under stated assumptions and does not identify it in these data.
+ 
+ \subsection{Absolute performance and incremental economic value}\label{sec:economics}
+ All nine allocations lose capital at primary costs (Table~\ref{tab:economics}; Figure~\ref{fig:wealth}). SPY unrestricted cumulative return falls from 31.21\% gross to $-0.47\%$ at 1 bps and $-67.05\%$ at 5 bps per side. QQQ yields 41.66\% gross and 7.40\% at 1 bps, but a net loss of 64.52\% at 5 bps per side; IWM already loses 18.03\% gross (Table~\ref{tab:costs}). These are full-period cumulative returns, not annualized rates.
+@@ -155,7 +164,7 @@
+ 
+ Table~\ref{tab:scale} applies Equation~\eqref{eq:paireddecomp} to unrestricted-minus-IID mean net differences and retained mean weights. The approximate daily net gains are 0.0425 bps for SPY, 0.0200 bps for QQQ and 0.0728 bps for IWM. Their implied gross gains are 0.0381, 0.0249 and 0.0703 bps; mean cost changes are $-0.0045$, 0.0049 and $-0.0025$ bps. Simple annualization of the mean net differences gives 0.1071, 0.0504 and 0.1834 percentage points per 252 sessions. These small relative improvements coexist with negative absolute performance. They are arithmetic rescalings of retained point estimates, not new hypothesis tests or compound annual returns.
+ 
+-Applying the same moving-block design to the component series, rather than to the aggregates, gives separate intervals. The incremental gross return averages 0.038, 0.025 and 0.070 basis points per day, with intervals $[-0.003,0.083]$, $[-0.021,0.073]$ and $[0.025,0.121]$. The net difference averages 0.043, 0.020 and 0.073 basis points with intervals $[0.001,0.087]$, $[-0.026,0.069]$ and $[0.028,0.123]$. Only the IWM gross interval and the SPY and IWM net intervals exclude zero. The same resampling gives the cost term itself: $-0.0045$, $+0.0049$ and $-0.0025$ basis points per day, with intervals $[-0.0090,0.0002]$, $[-0.0009,0.0107]$ and $[-0.0084,0.0030]$. Its absolute value is at most 0.005 basis points, so the cost channel cannot account for the sign of the net difference; the gross channel carries it. Interval endpoints are not subtracted from one another to obtain a cost interval, which would be invalid. For QQQ both the gross and the net differences are indistinguishable from zero at this precision, which is consistent with Appendix Table~A3 and with the paper's refusal to rank assets on point estimates.
++Applying the same moving-block design to the component series, rather than to the aggregates, gives separate intervals. The incremental gross return averages 0.038, 0.025 and 0.070 basis points per day, with intervals $[-0.003,0.083]$, $[-0.021,0.073]$ and $[0.025,0.121]$. The net difference averages 0.043, 0.020 and 0.073 basis points with intervals $[0.001,0.087]$, $[-0.026,0.069]$ and $[0.028,0.123]$. Only the IWM gross interval and the SPY and IWM net intervals exclude zero. The same resampling gives the cost term itself: $-0.0045$, $+0.0049$ and $-0.0025$ basis points per day, with intervals $[-0.0090,0.0002]$, $[-0.0009,0.0107]$ and $[-0.0084,0.0030]$. The absolute mean cost difference is below 0.005 basis points for each asset. At these point estimates, the gross difference is positive and larger in magnitude than the cost difference; this accounting comparison is not a causal attribution. Interval endpoints are not subtracted from one another to obtain a cost interval, which would be invalid. For QQQ both the gross and the net differences are indistinguishable from zero at this precision, consistent with Appendix Table~A3. These component intervals are pointwise; in the separate twelve-contrast economic family, only IWM's unrestricted-minus-IID mean net difference remains significant.
+ 
+ Figure~\ref{fig:calibration} shows bin-average probabilities, and Section~\ref{sec:components} attributes the score gain to a component rather than to the total. The allocation ignores within-state return magnitudes, so aggregate state scores alone cannot determine an economic break-even cost. Such a break-even would divide incremental gross return by incremental turnover; the two models differ by at most $1.0\times10^{-3}$ round trips per session in mean turnover, the implied ratio changes sign across assets, and it is therefore not reported. At 1 bps per side, unrestricted SPY and IWM return $-0.47\%$ and $-37.83\%$, whereas QQQ returns 7.40\% (Table~\ref{tab:costs}); profitability remains cost- and asset-dependent. No alternative allocation is selected from these outcomes.
+ 
+@@ -166,46 +175,46 @@
+ \subsection{Threshold and window rules}\label{sec:sensitivity}
+ The primary design re-estimates terciles from every past session at each origin. Table~\ref{tab:sensitivity} repeats the final-period comparison under four alternatives: cut points fixed at their first eligible values, rolling windows of 2,520 and 1,260 sessions applied to both the cut points and the state history, and a common start date of 26 May 2000 for all three assets.
+ 
+-Two features survive every rule. In all fifteen asset-by-rule combinations the average unrestricted-minus-IID loss difference is negative, between $-0.0017$ and $-0.0148$ nats, and the reversible-minus-unrestricted difference is positive. These are directions in the listed designs, not dominance relations between models. The only interval that excludes zero, IWM under fixed cut points, puts the reversible chain on the worse side. The fifteen rows are not fifteen independent tests: IWM's common-start row reproduces its primary row by construction, and every rule reuses the same sessions and the same three funds.
+-
+-Precision does not survive. The unrestricted-minus-IID interval excludes zero under the primary design and under fixed cut points for all three assets, but under a 2,520-session rolling window it includes zero for QQQ, and under a 1,260-session window it includes zero for all three assets. Shortening SPY's history to a common 2000 start changes its point estimate from $-0.00531$ to $-0.00536$ and widens the interval to include zero. A comparison that keeps its sign in all fifteen asset-by-rule combinations while failing to exclude zero in five of them is weak evidence for a small effect, not evidence of a stable one.
+-
+-Levels of log loss are not comparable across rules, because fixing the cut points redefines the labels. The unrestricted SPY loss falls from 1.0933 to 1.0732 and the QQQ loss from 1.0870 to 1.0306, not because the forecasts improve on a common metric but because the class distribution becomes more imbalanced and therefore easier to predict. Only paired differences within a rule are comparable across rules.
++Two features survive every rule. In all fifteen asset-by-rule combinations the average unrestricted-minus-IID loss difference is negative, between $-0.0017$ and $-0.0148$ nats, and the reversible-minus-unrestricted difference is positive. These are directions in the listed designs, not dominance relations between models. For reversible minus unrestricted, the only interval that excludes zero is IWM under fixed cut points, and it favors the unrestricted chain. The fifteen rows are not fifteen independent tests: IWM's common-start row reproduces its primary row by construction, and every rule reuses the same sessions and the same three funds.
++
++Precision does not survive. The unrestricted-minus-IID interval excludes zero under the primary design and under fixed cut points for all three assets, but under a 2,520-session rolling window it includes zero for QQQ, and under a 1,260-session window it includes zero for all three assets. Shortening SPY's history to a common 2000 start changes its point estimate from $-0.00531$ to $-0.00536$ and widens the interval to include zero. The negative full-period point estimates are robust in direction across these rules, but their precision depends on the estimation history. This design sensitivity is separate from stability across calendar periods.
++
++Absolute log-loss levels refer to different target definitions across rules. With fixed cut points, unrestricted loss falls from 1.0933 to 1.0732 for SPY and from 1.0870 to 1.0306 for QQQ. These reductions can partly reflect a more imbalanced class distribution; they cannot be interpreted as improved forecasting of a common target. Paired differences within each rule remain interpretable as model comparisons for that target definition. Their signs and sensitivity can be compared across rules, but their magnitudes do not measure gains on an identical prediction task.
+ 
+ The economic comparison behaves the same way. The mean net difference stays positive under every rule, between 0.02 and 0.14 basis points per day, and its interval contains zero in four of the fifteen rows while excluding it in the other eleven. The direction of the incremental value is stable across rules; because the rows share sessions and assets, eleven exclusions are not eleven independent findings, and no family-level claim is made.
+ 
+ One numerical caveat applies to this table. Under fixed and rolling rules the smoothed likelihood is flatter, and the retained solver stops on a line-search precision limit at between 0.1\% and 4.6\% of estimation origins. Those points have gradient infinity norm at most $2.1\times10^{-5}$ and are accepted here rather than discarded; the primary design never triggers the condition. The numbers in Appendix Table~\ref{tab:sensitivity} therefore rest on a documented acceptance rule that is slightly looser than the one used for the main results.
+ 
+ \subsection{Time stability within the final period}\label{sec:stability}
+-Table~\ref{tab:segments} cuts the final period into three fixed calendar segments, chosen before this analysis, and reports both contrasts within each. The unrestricted advantage is not uniform. It is largest in 2015--2018, when all three intervals exclude zero ($-0.0118$, $-0.0299$ and $-0.0079$ for SPY, QQQ and IWM), weakens in 2019--2022, and in 2023--2025 changes sign for SPY and QQQ ($+0.0046$ and $+0.0111$, the latter with an interval excluding zero) while remaining essentially zero for IWM. The QQQ gap in the first segment is two and a half times its full-period estimate.
++Table~\ref{tab:segments} divides the final period into three calendar segments selected for this retrospective revision, and reports both contrasts within each. The unrestricted advantage is not uniform. It is largest in 2015--2018, when all three intervals exclude zero ($-0.0118$, $-0.0299$ and $-0.0079$ for SPY, QQQ and IWM), weakens in 2019--2022, and in 2023--2025 changes sign for SPY and QQQ ($+0.0046$ and $+0.0111$, the latter with an interval excluding zero) while remaining essentially zero for IWM. The QQQ gap in the first segment is two and a half times its full-period estimate.
+ 
+ Figure~\ref{fig:rolling} shows the same information as a 252-session rolling mean. The paths cross zero around 2022--2023 for all three assets and stay near or above it afterwards. Overlapping windows are not independent observations and the path is descriptive; what it shows is that the full-period average is a weighted compromise between a favourable early period and an unfavourable recent one rather than a stable property of the model.
+ 
+-The reversible-minus-unrestricted difference is positive in all nine segments, with one interval (IWM, 2015--2018) excluding zero and lying on the worse side for the reversible model. The restriction's disadvantage is therefore more stable over time than the unrestricted chain's advantage.
++The reversible-minus-unrestricted difference is positive in all nine segments, with one interval (IWM, 2015--2018) excluding zero and lying on the worse side for the reversible model. The point-estimate sign of the restriction contrast is more consistent across segments than that of unrestricted minus IID; the segment-specific intervals do not establish a stable population disadvantage or test equality across segments.
+ 
+ \subsection{Controlled simulation of the restriction}\label{sec:simulation}
+-Section~\ref{sec:circulation} shows that the fitted chains carry circulation but cannot say what the restriction costs. Table~\ref{tab:simulation} answers a narrower, designed question: if the data came from a three-state chain with a stated circulation, how much expected log loss does imposing detailed balance cost at a given training length?
+-
+-The generating matrices keep a uniform stationary distribution, a diagonal of 0.35 and symmetric off-diagonal flows of 0.325, and add a circulation of 0, $-0.7$ or $-1.4$ percentage points per day by shifting each off-diagonal pair by half that amount in opposite directions. The first value satisfies detailed balance by construction; the third matches the fitted SPY and IWM magnitudes. For each length from 250 to 5,000 states, 500 chains were drawn, both estimators were fitted with the same smoothing, and expected log loss was evaluated against the true matrix. No test period is generated, so the comparison isolates the restriction rather than the rolling pipeline.
+-
+-Three patterns appear. When the restriction is correct it pays: with zero circulation the restricted estimator is better at every length, by $2.1\times10^{-3}$ nats at 250 observations and $1.0\times10^{-4}$ at 5,000, because one free parameter is removed. The cost of misspecification grows with the circulation and falls with the sample: at $-1.4$ percentage points it is $-6\times10^{-4}$ at 250, $+5.8\times10^{-4}$ at 1,260, $+1.17\times10^{-3}$ at 2,520 and $+1.26\times10^{-3}$ at 5,000, approaching the asymptotic $+1.36\times10^{-3}$. With $-0.7$ the crossover between the two regimes falls between 1,260 and 2,520 observations.
+-
+-At the training lengths used at the first final forecast (5,522, 3,980 and 3,672 observations) the simulated cost is about $1.2\times10^{-3}$ nats, the same order as the observed reversible-minus-unrestricted differences of 0.7 to $1.6\times10^{-3}$. The simulation is consistent with the observed ranking; it does not establish it. Its scenarios were chosen after the empirical results were seen, the generating process is calibrated to those results, and the experiment omits the dynamic threshold layer. It therefore explains a mechanism under stated assumptions and is not an independent confirmation of the empirical finding.
++Table~\ref{tab:simulation} examines a designed question: when observations follow a stationary three-state chain with known circulation, how does imposing detailed balance affect expected log loss at different training lengths?
++
++The baseline transition matrix $P_0$ has diagonal entries 0.35, off-diagonal entries 0.325 and stationary distribution $\pi_i=1/3$. Its stationary flow matrix is $S=P_0/3$. The generating flow is $F=S+(j/2)C$, where $C_{12}=C_{23}=C_{31}=1$, the reverse entries are $-1$, and the diagonal is zero. Setting $P=3F$ gives circulation $J_{12}=J_{23}=J_{31}=j$. The scenarios use $j=0,-0.007,-0.014$, equivalent to 0, $-0.7$ and $-1.4$ percentage points of daily flow. For each training length from 250 to 5,000 states, 500 chains are simulated and both estimators are fitted with the same smoothing. Expected log loss is evaluated directly against the generating matrix, with stationary row weights; no finite test path is drawn.
++
++When detailed balance is correct, the restricted estimator has lower expected loss at every listed length. Its advantage decreases from $2.09\times10^{-3}$ nats at 250 states to $1.01\times10^{-4}$ at 5,000. Under misspecification, the relative benefit of variance reduction diminishes with training length and the restriction bias becomes dominant. For $j=-0.014$, the reversible-minus-unrestricted difference rises from $-0.638\times10^{-3}$ at 250 states to $+0.950\times10^{-3}$ at 1,260, $+1.165\times10^{-3}$ at 2,520 and $+1.257\times10^{-3}$ at 5,000. For $j=-0.007$, the sign changes between 1,260 and 2,520 states.
++
++At 5,000 states, the stronger-circulation scenario produces a cost of approximately $1.3\times10^{-3}$ nats, of the same order as the empirical contrasts. This is an order-of-magnitude comparison: the simulation grid does not include the exact initial empirical training lengths of 5,522, 3,980 and 3,672 observations, and the weaker scenario is closer to QQQ's fitted circulation. The scenarios were selected after seeing the empirical results and omit the changing-threshold layer. They illustrate the bias--variance trade-off under stated generating processes; they neither identify the source of the observed ranking nor independently confirm it.
+ 
+ \subsection{Interpretation of the restriction}
+-The overnight literature supplies context but does not identify IWM's losses: no overnight-return decomposition or causal test was performed. Moreover, positive SPY/QQQ gross results contradict a claim that every intraday allocation necessarily faces negative gross returns. Detailed balance may trade variance reduction against restriction bias. With one restricted parameter and several thousand initial observations, its potential variance benefit may be limited, but this explanation has not been tested. Section~\ref{sec:circulation} reports the unrestricted circulation path, which is negative and persistent throughout the final period, so the restriction is binding at every origin. Neither that persistence nor the simulation of Section~\ref{sec:simulation} identifies lost circulation as the cause of the forecast ranking: the score cost of the restriction lies within its own interval, the path is a single highly autocorrelated sample that cannot separate a population asymmetry from accumulated estimation error, and the simulation is calibrated to the same data it is meant to explain. The 15 synthetic checks in Appendix B assess implementation behavior, not the statistical power of the empirical comparison.
++The score decomposition identifies which forecasting errors change, the circulation path describes which fitted flow detailed balance removes, and the simulation isolates a bias--variance trade-off under known truth. None of these analyses establishes that population irreversibility causes the empirical score gap. The highly persistent fitted circulation reuses an expanding history, the total log-loss intervals include zero, and the simulation was calibrated retrospectively. Likewise, the overnight-return literature does not explain IWM's intraday losses without an overnight decomposition or a causal design. The computational checks in Appendix B assess implementation and numerical agreement, not empirical power or economic identification.
+ 
+ \section{Limitations and conclusion}
+-The comparison is conditional on three states, first-order dependence and the estimation rule. Changing terciles omit return magnitudes and alter historical labels across origins. Section~\ref{sec:sensitivity} shows that the direction of every comparison survives fixed cut points, rolling windows and a common start date, but that the unrestricted-minus-IID interval includes zero in five of the fifteen asset-by-rule cases. Section~\ref{sec:stability} shows something sharper: the advantage is concentrated in 2015--2018 and changes sign in 2023--2025, so the full-period average summarises no single regime. Isolating adaptation from discretization would require a design that varies one component at a time. Three related US equity ETFs do not establish broad external validity.
+-
+-Retrospective vendor adjustments are not a point-in-time feed. Common same-session adjustment factors cancel in $C/O$, but historical revisions and execution uncertainty remain. Cash interest, costs and fills are simplified. The primary cost is a stated scenario, not an empirically estimated ETF execution cost. The nearly constant IID allocation is close to, but is not an exact performance calculation for, fixed half exposure. The component estimates of Section~\ref{sec:components} are computed from the daily records and carry intervals, but they decompose a scoring loss rather than wealth, and no path-level decomposition of returns into forecast-driven and residual parts is reported.
+-
+-Conditional bootstrap coverage under regime changes is unproven, conventional Sharpe scaling ignores serial dependence, and the familywise adjustment of Section~\ref{sec:joint} covers the six score contrasts only. Brier scores, component contrasts, economic outcomes and the alternative estimation rules remain pointwise, and they are not independent replications of one another. The retrospective internal freeze is not external preregistration. New settings or decision rules would need a separately declared evaluation; analyses of the already examined final sample would be exploratory.
+-
+-Within these boundaries, the unrestricted chain produces modest probability-score improvements over IID, of which only QQQ's survives familywise correction, while detailed balance offers no demonstrated forecast advantage under any convention examined. The fixed daily round-trip allocation remains unprofitable at the primary cost. Separating fixed exposure, probability adjustment and trading cost explains what the economic comparison measures. The score decomposition locates the forecast gain in the middle-versus-outer component, which the allocation uses only weakly, except for IWM; the circulation analysis shows what the restriction removes; and the simulation indicates that removing it costs about $10^{-3}$ nats at these sample sizes when the circulation is as large as fitted. These are conditional descriptions of one sample; they do not identify a mechanism, and the alternative cut-point and window rules preserve the direction of the comparisons while weakening their precision. The evidence therefore supports a bounded statement about direction, rather than equivalence of the forecast models or a general rejection of probabilistic forecasting for investment decisions.
++The evidence is conditional on three related US equity ETFs, three return states, first-order dependence and the stated estimation rules. Changing terciles discard return magnitudes and relabel history across origins. Alternative thresholds and windows preserve the direction of the full-period comparisons but reduce precision in several cases. Calendar segments show a more substantive limitation: the unrestricted advantage is concentrated in the earlier period and reverses for SPY and QQQ in 2023--2025. The full-period mean should not be interpreted as a stable forecasting edge.
++
++Data and execution assumptions also limit interpretation. Retrospective vendor adjustments are not a point-in-time feed. A common same-session adjustment factor cancels in $C/O$, but revisions to that ratio can change labels and fitted transitions. The cost scenarios are not estimates of actual ETF execution costs; fills, cash interest and exit notional are simplified. The daily-return decomposition is exact under this accounting but is not an additive decomposition of compounded wealth or Sharpe ratios.
++
++Inference is conditional on saved forecasts, with unproven coverage under structural change and conventional Sharpe scaling that does not correct for serial dependence. Separate adjustments cover the log-loss, Brier and economic families; they do not control multiplicity across all analyses. Component, segment and alternative-rule intervals remain pointwise. The calibration simulation imposes independent draws from a frozen forecast sequence and therefore is not a general test of sequential calibration. The internal design freeze is not external preregistration, and retrospective diagnostics do not supply new out-of-sample evidence. Any selection of a new allocation or estimation rule requires a separately declared evaluation.
++
++Within these limits, the unrestricted model achieves modest average score gains over IID. Log-loss evidence is consistent across the reported familywise procedures for QQQ and sensitive to the procedure for IWM; SPY is not significant after adjustment. Detailed balance has no demonstrated log-loss advantage, and the data do not establish equivalence. For SPY and QQQ, most score improvement concerns middle-versus-outer probabilities, whereas the fixed allocation is locally more responsive to the conditional upper-versus-lower probability. At five basis points per side, daily round trips overwhelm the small incremental mean gains and all nine model allocations lose capital. The practical implication is to evaluate a probability model together with the information used by a decision rule and its implementation costs, while reporting forecast quality, incremental value and absolute profitability separately.
+ 
+ \section*{Data and Code Availability Statement}
+-The accompanying replication supplement contains analysis code, synthetic tests, protocol documentation and source/data SHA-256 fingerprints. Its README documents environment setup, release verification and replay using locally supplied Date, Open and Close data. Third-party raw prices and row-level price-derived outputs are excluded. The archived data file is not distributed, although identifying fingerprints for it are published in the code package; a new download will not match those hashes byte for byte. This revision nevertheless re-derived the daily panel from a fresh retrieval of the same vendor series and reran the supplied code: row counts and date ranges match the archived fingerprint exactly, and the final-period log loss is reproduced to six decimals for SPY and IWM and to within $3\times10^{-6}$ for QQQ, where the vendor has revised individual sessions. The realized open-to-close returns that the models classify are invariant to a same-session adjustment factor, which is why the hashes can differ while the estimates agree. Appendix~B documents the reconstruction and the independent estimator. No permanent public repository or DOI is asserted for the release candidate. The manuscript source package also provides the aggregate inputs and arithmetic used for the additional descriptive table. Online Appendix B distinguishes the original verification evidence from these arithmetic additions.
++The accompanying replication supplement contains analysis code, synthetic tests, protocol documentation and source/data SHA-256 fingerprints. Its README documents environment setup, release verification and replay using locally supplied Date, Open and Close data. Third-party raw prices and row-level price-derived outputs are excluded. The archived data file is not distributed, although identifying fingerprints for it are published in the code package; a new download will not match those hashes byte for byte. The supplied replication record reports a reconstruction of the daily panel from a fresh retrieval of the same vendor series using the supplied code: row counts and date ranges match the archived fingerprint exactly, and the final-period log loss is reproduced to six decimals for SPY and IWM and to within $3\times10^{-6}$ for QQQ, without identifying which records account for that difference. The realized open-to-close returns that the models classify are invariant to a same-session adjustment factor, which can explain differing price-file hashes without differing intraday returns. Exact equality of model outputs still depends on whether any return ratios or labels changed. Appendix~B documents the reconstruction and the independent estimator. The release candidate has no permanent public repository or DOI at the time of this revision. The manuscript source package also provides the aggregate inputs and arithmetic used for the additional descriptive table. Online Appendix B distinguishes the original verification evidence from these arithmetic additions.
+ 
+ \ifblind\else
+ \section*{Funding}
+--- v11/source/figures.tex
++++ v12/source/figures.tex
+@@ -6,17 +6,17 @@
+ 
+ \begin{figure}[!htbp]\centering
+ \includegraphics[width=\linewidth]{../figures/figure2.pdf}
+-\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive. The common 0--1 axes retain the full probability scale; plotted points are bin averages, not individual forecast ranges. No confidence bands are shown here; a count-weighted summary and a joint test are reported in Appendix~\ref{app:families}.}\label{fig:calibration}
++\caption{Final-period class-wise calibration. Ten fixed bins are used; empty bins are omitted. Marker area increases with bin count. The diagonal denotes perfect bin-level reliability; sparse bins are descriptive. The common 0--1 axes retain the full probability scale; plotted points are bin averages, not individual forecast ranges. No confidence bands are shown here; a count-weighted summary and an independent-draw simulation diagnostic are reported in Appendix~\ref{app:families}.}\label{fig:calibration}
+ \end{figure}
+ 
+ \begin{figure}[!htbp]\centering
+-\includegraphics[width=\linewidth]{../figures/figure5_circulation.pdf}
+-\caption{Fitted circulation $j_t=J_{12}=J_{23}=J_{31}$ of the unrestricted chain at each final-period origin, in percentage points of daily probability flow. The dashed line at zero is detailed balance, imposed by construction in the reversible fit. A negative value indicates net rotation in the direction Down$\to$Up$\to$Neutral$\to$Down. The path is shown at the origin at which each forecast is formed; it is a property of the fitted transition matrix, not an additional observable.}
++\includegraphics[width=0.88\linewidth]{../figures/figure5_circulation.pdf}
++\caption{Fitted circulation $j_t=J_{12}=J_{23}=J_{31}$ of the unrestricted chain at each final-period origin, in percentage points of daily probability flow. The dashed line at zero is detailed balance, imposed by construction in the reversible fit. A negative value indicates net rotation in the direction Lower$\to$Upper$\to$Middle$\to$Lower. The plotted labels Down, Neutral and Up refer to relative terciles, not absolute return signs. The path is shown at the origin at which each forecast is formed; it is a property of the fitted transition matrix, not an additional observable.}
+ \label{fig:circulation}
+ \end{figure}
+ 
+ \begin{figure}[!htbp]\centering
+-\includegraphics[width=\linewidth]{../figures/figure6_rolling.pdf}
+-\caption{252-session rolling means of the two score differences, in $10^{-3}$ nats. Upper panel: unrestricted minus IID. Lower panel: reversible minus unrestricted. The zero line is no difference. Overlapping windows reuse almost all observations and the paths are descriptive; they show that the unrestricted advantage is concentrated before 2020 and reverses afterwards, and that the reversible difference stays mostly positive without a stable level.}
++\includegraphics[width=0.88\linewidth]{../figures/figure6_rolling.pdf}
++\caption{252-session rolling means of the two score differences, in $10^{-3}$ nats. Upper panel: unrestricted minus IID. Lower panel: reversible minus unrestricted. The zero line is no difference. Overlapping windows reuse almost all observations and the paths are descriptive; they show a larger unrestricted advantage early in the evaluation and deterioration in the later period, while the reversible difference stays mostly positive without a stable level.}
+ \label{fig:rolling}
+ \end{figure}
+--- v11/source/manuscript.tex
++++ v12/source/manuscript.tex
+@@ -3,7 +3,9 @@
+ \usepackage[T1]{fontenc}
+ \usepackage{lmodern,amsmath,amssymb,graphicx,booktabs,longtable,array}
+ \usepackage[round,authoryear]{natbib}
+-\usepackage[hidelinks]{hyperref}
++\usepackage{xr}
++\usepackage[draft,hidelinks]{hyperref}
++\externaldocument{appendix_crossrefs}
+ \usepackage{xurl}
+ \usepackage{microtype}
+ \newif\ifblind
+--- v11/source/online_appendix.tex
++++ v12/source/online_appendix.tex
+@@ -3,7 +3,9 @@
+ \usepackage[T1]{fontenc}
+ \usepackage{lmodern,amsmath,amssymb,graphicx,booktabs,longtable,array}
+ \usepackage[round,authoryear]{natbib}
+-\usepackage[hidelinks]{hyperref}
++\usepackage{xr}
++\usepackage[draft,hidelinks]{hyperref}
++\externaldocument{main_crossrefs}
+ \usepackage{xurl}
+ \usepackage{microtype}
+ \newif\ifblind
+--- v11/source/prepare_crossrefs.py
++++ v12/source/prepare_crossrefs.py
+@@ -0,0 +1,32 @@
++"""Prepare only external labels needed by the separate LaTeX entry points.
++
++Run after: tectonic -k source/preprint.tex
++This avoids duplicate local labels/citations from importing the complete AUX.
++External references are printed as numbers, without misleading local links.
++"""
++from pathlib import Path
++import re
++
++root=Path(__file__).resolve().parent
++def expanded(path):
++    text=path.read_text(encoding='utf-8')
++    for name in re.findall(r'\\input\{([^}]+)\}',text):
++        child=root/name
++        if not child.suffix:
++            child=child.with_suffix('.tex')
++        text+='\n'+expanded(child)
++    return text
++
++main='\n'.join(expanded(root/name) for name in ['body.tex','tables.tex','figures.tex'])
++app=expanded(root/'appendix_body.tex')
++groups={'main_crossrefs':set(re.findall(r'\\label\{([^}]+)\}',main)),
++        'appendix_crossrefs':set(re.findall(r'\\label\{([^}]+)\}',app))}
++aux=(root/'preprint.aux').read_text(encoding='utf-8')
++entries=re.findall(r'\\newlabel\{([^}]+)\}\{\{([^}]+)\}\{([^}]+)\}',aux)
++for name,labels in groups.items():
++    lines=['% Generated by prepare_crossrefs.py; numbers only, no hyperlink destinations.']
++    for key,num,page in entries:
++        if key in labels:
++            lines.append('\\newlabel{'+key+'}{{'+num+'}{'+page+'}{}{}}')
++    (root/(name+'.aux')).write_text('\n'.join(lines)+'\n',encoding='utf-8')
++    print(name,len(lines)-1,'labels')
+--- v11/source/references.tex
++++ v12/source/references.tex
+@@ -2,7 +2,7 @@
+ \bibitem[Bailey et al.(2014)]{Bailey2014} Bailey, D. H., Borwein, J. M., López de Prado, M., and Zhu, Q. J. (2014). Pseudo-Mathematics and Financial Charlatanism: The Effects of Backtest Overfitting on Out-of-Sample Performance. \textit{Notices of the AMS}, 61, 458--471. \url{https://doi.org/10.1090/noti1105}.
+ \bibitem[Berkman et al.(2012)]{Berkman2012} Berkman, H., Koch, P. D., Tuttle, L., and Zhang, Y. J. (2012). Paying Attention: Overnight Returns and the Hidden Cost of Buying at the Open. \textit{Journal of Financial and Quantitative Analysis}, 47, 715--741. \url{https://doi.org/10.1017/S0022109012000270}.
+ \bibitem[Bondarenko and Muravyev(2023)]{Bondarenko2023} Bondarenko, O., and Muravyev, D. (2023). Market Return Around the Clock: A Puzzle. \textit{Journal of Financial and Quantitative Analysis}, 58, 939--967. \url{https://doi.org/10.1017/S0022109022000783}.
+-\bibitem[Campbell and Thompson(2008)]{Campbell2008} Campbell, J. Y., and Thompson, S. B. (2008). Predicting Excess Stock Returns Out of Sample: Can Anything Beat the Historical Average?. \textit{Review of Financial Studies}, 21, 1509--1531. \url{https://doi.org/10.1093/rfs/hhm055}.
++\bibitem[Campbell and Thompson(2008)]{Campbell2008} Campbell, J. Y., and Thompson, S. B. (2008). Predicting Excess Stock Returns Out of Sample: Can Anything Beat the Historical Average? \textit{Review of Financial Studies}, 21, 1509--1531. \url{https://doi.org/10.1093/rfs/hhm055}.
+ \bibitem[Chen et al.(2000)]{Chen2000} Chen, Y.-T., Chou, R. Y., and Kuan, C.-M. (2000). Testing time reversibility without moment restrictions. \textit{Journal of Econometrics}, 95, 199--218. \url{https://doi.org/10.1016/S0304-4076(99)00036-6}.
+ \bibitem[Chen and Kuan(2002)]{Chen2002} Chen, Y.-T., and Kuan, C.-M. (2002). Time irreversibility and EGARCH effects in US stock index returns. \textit{Journal of Applied Econometrics}, 17, 565--578. \url{https://doi.org/10.1002/jae.692}.
+ \bibitem[Diebold and Mariano(1995)]{Diebold1995} Diebold, F. X., and Mariano, R. S. (1995). Comparing Predictive Accuracy. \textit{Journal of Business and Economic Statistics}, 13, 253--263. \url{https://doi.org/10.1080/07350015.1995.10524599}.
+@@ -18,6 +18,7 @@
+ \bibitem[McCausland(2007)]{McCausland2007} McCausland, W. J. (2007). Time reversibility of stationary regular finite-state Markov chains. \textit{Journal of Econometrics}, 136, 303--318. \url{https://doi.org/10.1016/j.jeconom.2005.09.001}.
+ \bibitem[Pesaran and Timmermann(1995)]{Pesaran1995} Pesaran, M. H., and Timmermann, A. (1995). Predictability of Stock Returns: Robustness and Economic Significance. \textit{Journal of Finance}, 50, 1201--1228. \url{https://doi.org/10.1111/j.1540-6261.1995.tb04055.x}.
+ \bibitem[Ramsey and Rothman(1996)]{Ramsey1996} Ramsey, J. B., and Rothman, P. (1996). Time Irreversibility and Business Cycle Asymmetry. \textit{Journal of Money, Credit and Banking}, 28, 1--21. \url{https://doi.org/10.2307/2077963}.
++\bibitem[Romano and Wolf(2005)]{RomanoWolf2005} Romano, J. P., and Wolf, M. (2005). Stepwise Multiple Testing as Formalized Data Snooping. \textit{Econometrica}, 73, 1237--1282. \url{https://doi.org/10.1111/j.1468-0262.2005.00615.x}.
+ \bibitem[Trendelkamp-Schroer et al.(2015)]{Trendelkamp2015} Trendelkamp-Schroer, B., Wu, H., Paul, F., and Noé, F. (2015). Estimation and uncertainty of reversible Markov models. \textit{Journal of Chemical Physics}, 143, 174101. \url{https://doi.org/10.1063/1.4934536}.
+ \bibitem[West(1996)]{West1996} West, K. D. (1996). Asymptotic Inference about Predictive Ability. \textit{Econometrica}, 64, 1067--1084. \url{https://doi.org/10.2307/2171956}.
+ \bibitem[White(2000)]{White2000} White, H. (2000). A Reality Check for Data Snooping. \textit{Econometrica}, 68, 1097--1126. \url{https://doi.org/10.1111/1468-0262.00152}.
+--- v11/source/tables/tab_bins.tex
++++ v12/source/tables/tab_bins.tex
+@@ -14,5 +14,5 @@
+ IWM & Unrestricted & 25 & 670 & 2766\\
+ IWM & Reversible & 25 & 78 & 2766\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize Bins are the ten fixed edges of Figure~\ref{fig:calibration}, counted separately for each of the three one-versus-rest classes, so thirty bins are possible. Most are empty: the forecast probabilities concentrate near one third, and a bin holding two observations carries no calibration information. The counts here are the only measure of how much support each plotted marker has; the summary statistic and test built from the same bins are in Table~\ref{tab:calibration}.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Bins are the ten fixed edges of Figure~\ref{fig:calibration}, counted separately for each of the three one-versus-rest classes, so thirty bins are possible. Most are empty: the forecast probabilities concentrate near one third, and a bin holding two observations provides little precision about calibration. The counts here are the only measure of how much support each plotted marker has; the summary statistic and reference diagnostic built from the same bins are in Table~\ref{tab:calibration}.}
+ \end{table}
+--- v11/source/tables/tab_calibration.tex
++++ v12/source/tables/tab_calibration.tex
+@@ -1,18 +1,18 @@
+ \begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{6pt}
+-\caption{Calibration error, interval and test}\label{tab:calibration}
++\caption{Observed calibration error and independent-draw reference diagnostic}\label{tab:calibration}
+ \begin{tabular}{llrrrr}\toprule
+-Asset & Model & Calibration error & 95\% CI & $p$ & Bins with $n\ge30$\\\midrule
+-SPY & IID & 0.0282 & [0.0117, 0.0469] & 0.002 & 3\\
+-SPY & Unrestricted & 0.0262 & [0.0116, 0.0429] & 0.002 & 4\\
+-SPY & Reversible & 0.0275 & [0.0149, 0.0434] & 0.002 & 5\\
++Asset & Model & Observed error & 95\% CI & Reference $p$ & Bins with $n\ge30$\\\midrule
++SPY & IID & 0.0264 & [0.0117, 0.0469] & 0.002 & 3\\
++SPY & Unrestricted & 0.0239 & [0.0116, 0.0429] & 0.002 & 4\\
++SPY & Reversible & 0.0242 & [0.0149, 0.0434] & 0.002 & 5\\
+ \midrule
+-QQQ & IID & 0.0400 & [0.0198, 0.0613] & 0.002 & 3\\
+-QQQ & Unrestricted & 0.0369 & [0.0201, 0.0555] & 0.002 & 7\\
+-QQQ & Reversible & 0.0354 & [0.0194, 0.0536] & 0.002 & 6\\
++QQQ & IID & 0.0394 & [0.0198, 0.0613] & 0.002 & 3\\
++QQQ & Unrestricted & 0.0363 & [0.0201, 0.0555] & 0.002 & 7\\
++QQQ & Reversible & 0.0345 & [0.0194, 0.0536] & 0.002 & 6\\
+ \midrule
+-IWM & IID & 0.0240 & [0.0086, 0.0421] & 0.004 & 3\\
+-IWM & Unrestricted & 0.0231 & [0.0097, 0.0396] & 0.004 & 5\\
+-IWM & Reversible & 0.0247 & [0.0103, 0.0413] & 0.002 & 5\\
++IWM & IID & 0.0223 & [0.0086, 0.0421] & 0.004 & 3\\
++IWM & Unrestricted & 0.0213 & [0.0097, 0.0396] & 0.004 & 5\\
++IWM & Reversible & 0.0229 & [0.0103, 0.0413] & 0.002 & 5\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize The statistic is the mean over the three one-versus-rest classes of $\sum_b (n_b/N)\lvert\bar p_b-\hat o_b\rvert$ over the ten fixed bins of Figure~\ref{fig:calibration}. The interval is a percentile interval from 5,000 paired moving blocks of length 20 computed by resampling days and recomputing every bin. The $p$-value comes from a parametric bootstrap in which each day's outcome is drawn from that day's forecast; it tests the joint null that the forecasts are calibrated, not a specific bin. Three to seven of the thirty possible bins hold thirty or more observations, so the statistic is dominated by a few cells.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize The statistic is the mean over the three one-versus-rest classes of $\sum_b (n_b/N)\lvert\bar p_b-\hat o_b\rvert$ over the ten fixed bins of Figure~\ref{fig:calibration}. The interval is a percentile interval from 5,000 paired moving blocks of length 20 computed by resampling days and recomputing every bin. The reference $p$ uses 500 simulations with independent outcomes drawn from each day's frozen forecast and the plus-one correction. It is a diagnostic under that stronger reference model, not a general sequential-calibration test; values are not adjusted across the nine rows. The minimum possible value is $1/501$. Three to seven of the thirty possible bins hold thirty or more observations, so the statistic is dominated by a few cells.}
+ \end{table}
+--- v11/source/tables/tab_joint.tex
++++ v12/source/tables/tab_joint.tex
+@@ -1,5 +1,5 @@
+ \begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{5pt}
+-\caption{Familywise inference for the six score contrasts}\label{tab:joint}
++\caption{Familywise inference for the six log-loss contrasts}\label{tab:joint}
+ \footnotesize\begin{tabular}{llrrrrr}\toprule
+ Asset & Contrast & Estimate & Pointwise 95\% CI & Romano--Wolf $p$ & Holm $p$ & Simultaneous CI\\\midrule
+ SPY & $\mathrm{U}-\mathrm{IID}$ & $-$0.005314 & [$-$0.009963, $-$0.000713] & 0.093 & 0.097 & [$-$0.011455, $+$0.000827]\\
+@@ -9,5 +9,5 @@
+ IWM & $\mathrm{U}-\mathrm{IID}$ & $-$0.004942 & [$-$0.008825, $-$0.001209] & 0.048 & 0.056 & [$-$0.009937, $+$0.000054]\\
+ IWM & $\mathrm{R}-\mathrm{U}$ & $+$0.001595 & [$-$0.000140, $+$0.003359] & 0.191 & 0.225 & [$-$0.000696, $+$0.003886]\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. All six contrasts use 2,766 common target sessions and the 5,000 paired moving-block draws of Section~\ref{sec:joint}, reindexed jointly across assets and contrasts. The Romano--Wolf $p$-value is stepdown-adjusted for the family of six; Holm's column applies a closed-form procedure to the same raw $p$-values. The simultaneous interval uses a single-step max-$|t|$ critical value of 2.585 and is more conservative than the stepdown test, so the two need not agree at the boundary. Pointwise intervals reproduce Table~\ref{tab:intervals} and are not familywise. No adjustment covers Brier scores, components or economic outcomes.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. All six contrasts use 2,766 common target sessions and the 5,000 paired moving-block draws of Section~\ref{sec:joint}, reindexed jointly across assets and contrasts. The Romano--Wolf $p$-value is stepdown-adjusted for the family of six; Holm's column applies a closed-form procedure to the same raw $p$-values. The simultaneous interval uses a single-step max-$|t|$ critical value of 2.585 and is more conservative than the stepdown test, so the two need not agree at the boundary. Pointwise intervals use the reconstructed panel and are not familywise; QQQ differs slightly from the archived estimates in Table~\ref{tab:intervals}. Separate adjustments for Brier and economic contrasts are reported in Appendix~\ref{app:families}; component intervals remain pointwise. No correction controls all families jointly.}
+ \end{table}
+--- v11/source/tables/tab_jointbrier.tex
++++ v12/source/tables/tab_jointbrier.tex
+@@ -9,5 +9,5 @@
+ IWM & $\mathrm{U}-\mathrm{IID}$ & $-$0.003356 & [$-$0.005981, $-$0.000856] & 0.041 & 0.045\\
+ IWM & $\mathrm{R}-\mathrm{U}$ & $+$0.001031 & [$-$0.000081, $+$0.002179] & 0.190 & 0.230\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize Separate family, adjusted within itself only. Estimates are model minus IID for the first contrast and reversible minus unrestricted for the second; for scores a negative difference favours the first model, for returns a positive difference does. Intervals are pointwise percentile intervals from the same 5,000 paired moving-block draws, reindexed jointly across the six contrasts; the $p$-values are stepdown-adjusted within this family and are not comparable with those of Table~\ref{tab:joint}.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Separate family, adjusted within itself only. Estimates are model minus IID for the first contrast and reversible minus unrestricted for the second; for scores a negative difference favours the first model, for returns a positive difference does. Intervals are pointwise percentile intervals from the same 5,000 paired moving-block draws, reindexed jointly across the six contrasts; the $p$-values are stepdown-adjusted within this family and do not control errors jointly with Table~\ref{tab:joint}.}
+ \end{table}
+--- v11/source/tables/tab_jointecon.tex
++++ v12/source/tables/tab_jointecon.tex
+@@ -20,5 +20,5 @@
+ IWM & $\mathrm{U}-\mathrm{IID}$ & $+$0.0278 & [$+$0.0085, $+$0.0470] & 0.001 & 0.002\\
+ IWM & $\mathrm{R}-\mathrm{U}$ & $-$0.0251 & [$-$0.0459, $-$0.0044] & 0.007 & 0.009\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize One exploratory family of twelve contrasts, adjusted within itself and not comparable with Table~\ref{tab:joint}. Estimates are unrestricted minus IID for the first contrast and reversible minus unrestricted for the second; for both metrics a positive difference favours the first model. Intervals are simultaneous, from the single-step max-$|t|$ critical value of 2.721; the $p$-values are stepdown-adjusted. The Sharpe statistic is recomputed inside every bootstrap draw from the resampled days, so its sampling variability is that of a ratio rather than of a mean.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize One exploratory family of twelve contrasts, adjusted within itself, with no joint error control across this family and Table~\ref{tab:joint}. Estimates are unrestricted minus IID for the first contrast and reversible minus unrestricted for the second; for both metrics a positive difference favours the first model. Intervals are simultaneous, from the single-step max-$|t|$ critical value of 2.721; the $p$-values are stepdown-adjusted. The Sharpe statistic is recomputed inside every bootstrap draw from the resampled days, so its sampling variability is that of a ratio rather than of a mean.}
+ \end{table}
+--- v11/source/tables/tab_simulation.tex
++++ v12/source/tables/tab_simulation.tex
+@@ -3,8 +3,8 @@
+ \setlength{\tabcolsep}{3pt}\begin{tabular}{lrrrrrr}\toprule
+ Process & $j$ & $n=250$ & $n=500$ & $n=1{,}260$ & $n=2{,}520$ & $n=5{,}000$\\\midrule
+ Reversible truth ($j=0$) & +0.0 & -2.087 (0.137) & -1.008 (0.062) & -0.431 (0.027) & -0.214 (0.013) & -0.101 (0.006)\\
+-Weak circulation ($j=-0.7$) & -0.0 & -1.626 (0.132) & -0.661 (0.061) & -0.061 (0.026) & +0.132 (0.013) & +0.245 (0.007)\\
+-Fitted magnitude ($j=-1.4$) & -0.0 & -0.638 (0.134) & +0.374 (0.072) & +0.950 (0.023) & +1.165 (0.012) & +1.257 (0.007)\\
++Weak circulation ($j=-0.7$) & -0.7 & -1.626 (0.132) & -0.661 (0.061) & -0.061 (0.026) & +0.132 (0.013) & +0.245 (0.007)\\
++Fitted magnitude ($j=-1.4$) & -1.4 & -0.638 (0.134) & +0.374 (0.072) & +0.950 (0.023) & +1.165 (0.012) & +1.257 (0.007)\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize Entries are $10^{3}$ times the difference in expected log loss between the restricted and unrestricted estimators, evaluated against the generating matrix; Monte Carlo standard errors are in parentheses, from 500 simulated chains per cell. $j$ is the circulation $J_{12}=J_{23}=J_{31}$ in percentage points of daily flow. Positive values mean that imposing detailed balance costs expected log loss. The generating matrices have a uniform stationary distribution, a diagonal of 0.35 and symmetric off-diagonal flows of 0.325. The design was fixed after the empirical results were seen and is calibrated to them, so the agreement reported in Section~\ref{sec:simulation} is an explanation, not a confirmation.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Entries are $10^{3}$ times the difference in expected log loss between the restricted and unrestricted estimators, evaluated against the generating matrix; Monte Carlo standard errors are in parentheses, from 500 simulated chains per cell. $j$ is the circulation $J_{12}=J_{23}=J_{31}$ in percentage points of daily flow. Positive values mean that imposing detailed balance costs expected log loss. The generating matrices have a uniform stationary distribution, baseline transition probabilities of 0.35 on the diagonal and 0.325 off the diagonal; stationary flows are one-third of those probabilities. The design was fixed after the empirical results were seen and is calibrated to them, so the agreement reported in Section~\ref{sec:simulation} is an explanation, not a confirmation.}
+ \end{table}
+--- v11/source/tables.tex
++++ v12/source/tables.tex
+@@ -89,7 +89,7 @@
+ QQQ & 1.065 & 0.0249 & 0.0049 & 0.0200 & 0.0504\\
+ IWM & 0.450 & 0.0703 & -0.0025 & 0.0728 & 0.1834\\
+ \bottomrule\end{tabular}
+-\par\smallskip\parbox{0.98\linewidth}{\footnotesize Loss reduction is $-100(\bar\ell_{\mathrm U}-\bar\ell_{\mathrm{IID}})/\bar\ell_{\mathrm{IID}}$. All return and cost differences are unrestricted minus IID at 5 bps per side. The mean cost difference is $2c(\bar w_{\mathrm U}-\bar w_{\mathrm{IID}})$; the gross difference is the reported mean net difference plus this cost difference. One basis point is $10^{-4}$ in return units; pp denotes percentage points. Annualized mean differences equal $252\times100\Delta\bar R$, not differences in compound annual growth rates. Values are approximate because the input losses and mean net differences are rounded in the retained tables. Independent intervals for the gross, cost and net components are reported in Section~4.5.}
++\par\smallskip\parbox{0.98\linewidth}{\footnotesize Loss reduction is $-100(\bar\ell_{\mathrm U}-\bar\ell_{\mathrm{IID}})/\bar\ell_{\mathrm{IID}}$. All return and cost differences are unrestricted minus IID at 5 bps per side. The mean cost difference is $2c(\bar w_{\mathrm U}-\bar w_{\mathrm{IID}})$; the gross difference is the reported mean net difference plus this cost difference. One basis point is $10^{-4}$ in return units; pp denotes percentage points. Annualized mean differences equal $252\times100\Delta\bar R$, not differences in compound annual growth rates. Values are approximate because the input losses and mean net differences are rounded in the retained tables. Separate pointwise intervals for the gross, cost and net components are reported in Section~\ref{sec:economics}.}
+ \end{table}
+ 
+ \input{tables/tab_components}
+--- v11/修改说明_v12.md
++++ v12/修改说明_v12.md
+@@ -0,0 +1,65 @@
++# 论文 v12 投稿前全面修改说明
++
++修订日期：2026年11月16日
++
++本轮按“投稿前全面打磨”处理，保留英文论文、研究设计、资产与样本区间，以及原始模型实验的主要结果。原始 v11 压缩包未改动。本次不仅润色语言，也修复了能由源文件、计算代码和既有预测记录直接确认的实质错误。
++
++## 交付内容
++
++- `paper_revision_v12.pdf`：31页完整审阅版，含正文、表格、图和附录。
++- `paper_revision_v12_source.zip`：可编辑 LaTeX 源码、图件、分析代码、历史记录、v12 检查与修改差异。内含同版完整 PDF。
++- 本修改说明：解释重点修改、核验范围和投稿前仍需补强的证据。
++
++## 已完成的实质修正
++
++| 位置 | v11 的问题 | v12 的处理 |
++|---|---|---|
++| 摘要、引言、结论 | 摘要堆积诊断细节；贡献和结论边界分散 | 摘要由约 331 个空格分隔词项压缩到 225 个；围绕预测精度、决策所用信息、交易成本组织主线；明确是实证比较而非新估计器 |
++| 第4.2节、摘要及结论 | IWM 的 stepdown p=0.048，却说“未拒绝”或“只有 QQQ 通过校正” | 明确 IWM 在该逐步检验下达到5%阈值，但 Holm p=0.056、单步同时区间仍包含零；QQQ 在三种报告方法下结论一致 |
++| 推断范围、表9脚注、结论 | 沿用“Brier 和经济结果未调整”的旧说明，与新版附录冲突 | 区分六个 log-loss、六个 Brier、十二个经济对比，各自在族内校正；不存在覆盖全文所有分析的统一错误率控制 |
++| 第4.3节 | QQQ 的中间状态分量被误写为区间包含零，误用了 IWM 的 +0.00004 上限 | 核对并重算分量表，QQQ 正确区间为 [-0.01850, -0.00456]；同步明确约40倍的局部敏感度针对 unrestricted 预测，并非收益归因 |
++| 表A12及生成代码 | `ece` 返回自助抽样误差的平均值，而不是原样本误差 | 改为实际观测误差；另存 bootstrap mean 用于追溯。重新生成九组点估计，原有区间和参考模拟尾部概率保持一致 |
++| 附录A.5、表A12及校准图注 | 将固定整条预测路径后的独立模拟解释为一般校准检验；仅凭类别比例就归因于边际失配 | 改为具有更强独立性假设的参考模型诊断；说明适应性预测、时间依赖和区间解释限制，删除未经分解验证的归因 |
++| 第4.8节及表A8 | 循环流量单位显示为 -0.0；混淆转移概率和稳态流量；趋势及一个示例数值错误 | 将单位修正为 -0.7、-1.4 个百分点；写明 S=P₀/3、F=S+(j/2)C、P=3F；n=1,260 的强循环场景改为 +0.950×10⁻³；正确说明偏差随方差优势减弱而显现 |
++| 第4.8节 | 把近似样本量比较写成在精确实证训练长度上的模拟结果 | 明确模拟网格最高为5,000，未模拟5,522、3,980、3,672三个精确长度；只作量级比较 |
++| 数据复现说明 | 暗示同倍数价格调整改变日内收益分位点；由近似一致的 IID loss 推断标签几乎一致 | 说明同日同比例调整同时抵消于 C/O 及其分位点；只有改变收益比率的修订才可能改变标签；不再声称能定位具体修订记录 |
++| 第4.3—4.9节 | 从不显著结果推断“没有收益”，或把分量和循环流量直接视作因果机制 | 使用“未检测到改善”等准确措辞，区分分量描述、模型约束和机制识别；明确跨目标定义的损失量级不能直接视为同一任务的改进 |
++| 分析代码与说明 | 备用求解器只记录梯度，未落实文中声称的最终阈值；复现命令多出无效位置参数 | 增加有限值、可行性和 2.1×10⁻⁵ 梯度上限检查；将命令改为 `--stages all`；原始冻结估计器 ZIP 保持完全一致 |
++| 文献与排版 | Romano–Wolf 方法缺少直接出处；分离稿交叉引用不完整 | 补入并核对 Romano 与 Wolf (2005) 原始文献；修复交叉引用；合并较小诊断图的页面，检查表格、公式与图注 |
++
++## 校准表的实际改动
++
++以下均为原表所定义的三类平均、按箱样本数加权的绝对误差。v11列是被误当作点估计的 bootstrap mean，v12列是原样本直接计算值。
++
++| 资产 | 模型 | v11 | v12 |
++|---|---|---:|---:|
++| SPY | IID | 0.0282 | 0.0264 |
++| SPY | Unrestricted | 0.0262 | 0.0239 |
++| SPY | Reversible | 0.0275 | 0.0242 |
++| QQQ | IID | 0.0400 | 0.0394 |
++| QQQ | Unrestricted | 0.0369 | 0.0363 |
++| QQQ | Reversible | 0.0354 | 0.0345 |
++| IWM | IID | 0.0240 | 0.0223 |
++| IWM | Unrestricted | 0.0231 | 0.0213 |
++| IWM | Reversible | 0.0247 | 0.0229 |
++
++所有原有 bootstrap 区间及参考模拟尾部概率均经复算确认不变。参考模拟仅500次，采用加一校正，最小可能值为1/501≈0.002；这不能替代适用于时间依赖、动态更新预测的一般校准检验。
++
++## 本轮实际完成的核验
++
++1. 读取原始 ZIP 中的正文、附录、表格、图、分析程序与历史汇总记录。
++2. 使用同目录 `_work/runs` 中既有的三个重构预测文件；逐个 SHA-256 与 v7 记录完全匹配。每个资产均为2,766个最终评价日，2015-01-02至2025-12-31。没有重新下载价格。
++3. 重算九组校准误差、5,000次长度20的移动区块区间及500次独立参考模拟；重算得分分量表、R−U分量区间和配置局部导数。分量表与既有 LaTeX 表逐字一致，错误在旧正文解释。
++4. 新增并通过15项针对性检查，覆盖观测误差与 bootstrap mean 的区分、表格生成、循环流量单位与矩阵性质、备用求解器拒绝/接受条件、引用完整性和关键结论一致性。
++5. v10、v11历史汇总检查脚本通过。这只说明其历史汇总文件内部满足对应检查，不代表其旧解释仍有效；v12修正及诊断范围以新版正文为准。
++6. 完整稿、单独正文、匿名正文和附录四个入口均成功编译。最终 LaTeX 日志无未定义引用、重复标签或版面溢出警告。交付的完整稿逐页渲染检查；冻结模型代码包的哈希与 v11 完全一致。
++
++**没有完成、也没有声称完成：**从原始价格重新运行全部模型拟合、所有替代规则、独立优化器、多起点检验和全部模拟；验证区块 bootstrap 在结构变化下的覆盖率；逐条重新核查全部既有参考文献。备用求解器新增检查后，未来完整重跑若遇到不合格拟合会明确报错，而不是静默接受。
++
++## 投稿前仍值得补强的事项
++
++- **原始证据与可复现性：**目前公开包不含原始价格或逐行预测；原始快照与重构面板仍需作者妥善存档。永久公开代码仓库/DOI尚未提供。
++- **更强的推断证据：**时间分段已显示优势不稳定；现有校准参考模拟不能声称解决序列校准检验，家族内部校正也不能解释为全文统一控制。若后续补做，需要实际执行新的分析。
++- **投稿适配：**尚未指定期刊，因此采用通用学术稿结构，没有声称满足某一期刊的篇幅、匿名化、数据政策或格式要求。作者、资助、利益冲突等声明沿用原稿，提交前由作者核实。
++
++本轮新增文献的核对来源：[Romano & Wolf (2005), Econometrica 原文页面](https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1468-0262.2005.00615.x)。

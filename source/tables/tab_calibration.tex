@@ -1,0 +1,18 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{6pt}
+\caption{Observed calibration error and independent-draw reference diagnostic}\label{tab:calibration}
+\begin{tabular}{llrrrr}\toprule
+Asset & Model & Observed error & 95\% CI & Reference $p$ & Bins with $n\ge30$\\\midrule
+SPY & IID & 0.0264 & [0.0117, 0.0469] & 0.002 & 3\\
+SPY & Unrestricted & 0.0239 & [0.0116, 0.0429] & 0.002 & 4\\
+SPY & Reversible & 0.0242 & [0.0149, 0.0434] & 0.002 & 5\\
+\midrule
+QQQ & IID & 0.0394 & [0.0198, 0.0613] & 0.002 & 3\\
+QQQ & Unrestricted & 0.0363 & [0.0201, 0.0555] & 0.002 & 7\\
+QQQ & Reversible & 0.0345 & [0.0194, 0.0536] & 0.002 & 6\\
+\midrule
+IWM & IID & 0.0223 & [0.0086, 0.0421] & 0.004 & 3\\
+IWM & Unrestricted & 0.0213 & [0.0097, 0.0396] & 0.004 & 5\\
+IWM & Reversible & 0.0229 & [0.0103, 0.0413] & 0.002 & 5\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize The statistic is the mean over the three one-versus-rest classes of $\sum_b (n_b/N)\lvert\bar p_b-\hat o_b\rvert$ over the ten fixed bins of Figure~\ref{fig:calibration}. The interval is a percentile interval from 5,000 paired moving blocks of length 20 computed by resampling days and recomputing every bin. The reference $p$ uses 500 simulations with independent outcomes drawn from each day's frozen forecast and the plus-one correction. It is a diagnostic under that stronger reference model, not a general sequential-calibration test; values are not adjusted across the nine rows. The minimum possible value is $1/501$. Three to seven of the thirty possible bins hold thirty or more observations, so the statistic is dominated by a few cells.}
+\end{table}

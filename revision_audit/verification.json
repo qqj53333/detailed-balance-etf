@@ -1,0 +1,13 @@
+{
+  "original_main_tables_unchanged": true,
+  "original_appendix_tables_unchanged": true,
+  "original_figure_assets_unchanged": true,
+  "provided_pdf_matches_package_preprint": true,
+  "original_code_hash_verification": "passed",
+  "new_arithmetic_checks": "passed",
+  "source_entrypoints_compile_without_latex_warnings": true,
+  "final_preprint_pages": 20,
+  "market_data_refit_performed": false,
+  "all_final_preprint_pages_visually_reviewed": true,
+  "final_latex_layout_warnings": 0
+}

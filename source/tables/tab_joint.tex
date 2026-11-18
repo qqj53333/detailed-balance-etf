@@ -1,0 +1,13 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{5pt}
+\caption{Familywise inference for the six log-loss contrasts}\label{tab:joint}
+\footnotesize\begin{tabular}{llrrrrr}\toprule
+Asset & Contrast & Estimate & Pointwise 95\% CI & Romano--Wolf $p$ & Holm $p$ & Simultaneous CI\\\midrule
+SPY & $\mathrm{U}-\mathrm{IID}$ & $-$0.005314 & [$-$0.009963, $-$0.000713] & 0.093 & 0.097 & [$-$0.011455, $+$0.000827]\\
+SPY & $\mathrm{R}-\mathrm{U}$ & $+$0.001315 & [$-$0.000422, $+$0.003131] & 0.256 & 0.302 & [$-$0.001042, $+$0.003671]\\
+QQQ & $\mathrm{U}-\mathrm{IID}$ & $-$0.011699 & [$-$0.018681, $-$0.004532] & 0.008 & 0.010 & [$-$0.021016, $-$0.002382]\\
+QQQ & $\mathrm{R}-\mathrm{U}$ & $+$0.000685 & [$-$0.000358, $+$0.001681] & 0.256 & 0.302 & [$-$0.000671, $+$0.002041]\\
+IWM & $\mathrm{U}-\mathrm{IID}$ & $-$0.004942 & [$-$0.008825, $-$0.001209] & 0.048 & 0.056 & [$-$0.009937, $+$0.000054]\\
+IWM & $\mathrm{R}-\mathrm{U}$ & $+$0.001595 & [$-$0.000140, $+$0.003359] & 0.191 & 0.225 & [$-$0.000696, $+$0.003886]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. All six contrasts use 2,766 common target sessions and the 5,000 paired moving-block draws of Section~\ref{sec:joint}, reindexed jointly across assets and contrasts. The Romano--Wolf $p$-value is stepdown-adjusted for the family of six; Holm's column applies a closed-form procedure to the same raw $p$-values. The simultaneous interval uses a single-step max-$|t|$ critical value of 2.585 and is more conservative than the stepdown test, so the two need not agree at the boundary. Pointwise intervals use the reconstructed panel and are not familywise; QQQ differs slightly from the archived estimates in Table~\ref{tab:intervals}. Separate adjustments for Brier and economic contrasts are reported in Appendix~\ref{app:families}; component intervals remain pointwise. No correction controls all families jointly.}
+\end{table}

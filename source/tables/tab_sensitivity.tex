@@ -1,0 +1,25 @@
+\begin{table}[!htbp]\centering\footnotesize\setlength{\tabcolsep}{3pt}
+\caption{Threshold and window sensitivity of the final-period comparisons}\label{tab:sensitivity}
+\begin{tabular}{llrrr}\toprule
+Asset & Rule & $\Delta(\mathrm U-\mathrm{IID})$ log loss & $\Delta(\mathrm R-\mathrm U)$ log loss & $\Delta$ net return (bps/day)\\
+ & & [95\% CI] & [95\% CI] & [95\% CI]\\\midrule
+SPY & Primary & $-$0.0053 [$-$0.0100, $-$0.0007] & $+$0.0013 [$-$0.0004, $+$0.0031] & 0.043 [$+$0.001, $+$0.087]\\
+SPY & Fixed cut points & $-$0.0085 [$-$0.0137, $-$0.0035] & $+$0.0016 [$-$0.0002, $+$0.0033] & 0.045 [$+$0.003, $+$0.091]\\
+SPY & Rolling 2,520 & $-$0.0048 [$-$0.0090, $-$0.0005] & $+$0.0006 [$-$0.0010, $+$0.0022] & 0.042 [$-$0.010, $+$0.099]\\
+SPY & Rolling 1,260 & $-$0.0017 [$-$0.0057, $+$0.0028] & $+$0.0000 [$-$0.0020, $+$0.0021] & 0.082 [$+$0.018, $+$0.148]\\
+SPY & Common start & $-$0.0054 [$-$0.0108, $+$0.0001] & $+$0.0011 [$-$0.0007, $+$0.0029] & 0.038 [$-$0.001, $+$0.079]\\
+\midrule
+QQQ & Primary & $-$0.0117 [$-$0.0187, $-$0.0045] & $+$0.0007 [$-$0.0004, $+$0.0017] & 0.020 [$-$0.026, $+$0.069]\\
+QQQ & Fixed cut points & $-$0.0148 [$-$0.0221, $-$0.0076] & $+$0.0013 [$-$0.0001, $+$0.0026] & 0.055 [$+$0.013, $+$0.102]\\
+QQQ & Rolling 2,520 & $-$0.0049 [$-$0.0098, $+$0.0003] & $+$0.0009 [$-$0.0007, $+$0.0027] & 0.115 [$+$0.021, $+$0.207]\\
+QQQ & Rolling 1,260 & $-$0.0047 [$-$0.0096, $+$0.0002] & $+$0.0010 [$-$0.0008, $+$0.0029] & 0.144 [$+$0.030, $+$0.267]\\
+QQQ & Common start & $-$0.0104 [$-$0.0169, $-$0.0034] & $+$0.0005 [$-$0.0005, $+$0.0016] & 0.025 [$-$0.021, $+$0.074]\\
+\midrule
+IWM & Primary & $-$0.0049 [$-$0.0088, $-$0.0012] & $+$0.0016 [$-$0.0001, $+$0.0034] & 0.073 [$+$0.028, $+$0.123]\\
+IWM & Fixed cut points & $-$0.0043 [$-$0.0079, $-$0.0007] & $+$0.0016 [$+$0.0003, $+$0.0030] & 0.059 [$+$0.019, $+$0.104]\\
+IWM & Rolling 2,520 & $-$0.0043 [$-$0.0086, $-$0.0001] & $+$0.0021 [$-$0.0006, $+$0.0048] & 0.116 [$+$0.036, $+$0.202]\\
+IWM & Rolling 1,260 & $-$0.0024 [$-$0.0067, $+$0.0019] & $+$0.0015 [$-$0.0013, $+$0.0045] & 0.109 [$+$0.001, $+$0.222]\\
+IWM & Common start & $-$0.0049 [$-$0.0088, $-$0.0012] & $+$0.0016 [$-$0.0001, $+$0.0034] & 0.073 [$+$0.028, $+$0.123]\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize U: unrestricted; R: reversible. Each rule re-estimates cut points and state counts as described in Section~\ref{sec:sensitivity}; the common-start rule applies 26 May 2000 to all three assets and leaves IWM unchanged. $\Delta$ net is the paired mean net-return difference at 5 bps per side. Intervals are percentile intervals from 5,000 paired moving blocks of length 20, conditional on the forecasts generated under each rule, without refitting and without multiplicity adjustment. Mean unrestricted levels, which are not comparable across rules, are 1.0933, 1.0732, 1.0939, 1.0969, 1.0932 for SPY and 1.0870, 1.0306, 1.0937, 1.0939, 1.0883 for QQQ under the five rules in order. Under the fixed and rolling rules the retained solver reaches a line-search precision limit at between 0.1\% and 4.6\% of estimation origins; the v13 fallback re-solves the same likelihood on simplex flow masses and accepts only positive finite fits with projected-gradient infinity norm at most $10^{-8}$. The primary rule has no fallbacks; this replaces the older softmax-gradient acceptance rule.}
+\end{table}

@@ -1,0 +1,18 @@
+\begin{table}[!htbp]\centering\small\setlength{\tabcolsep}{8pt}
+\caption{Calibration bin occupancy in the final period}\label{tab:bins}
+\begin{tabular}{llrrr}\toprule
+Asset & Model & Empty bins (of 30) & Smallest non-empty & Largest\\\midrule
+SPY & IID & 27 & 2766 & 2766\\
+SPY & Unrestricted & 25 & 2 & 2766\\
+SPY & Reversible & 25 & 826 & 2766\\
+\midrule
+QQQ & IID & 27 & 2766 & 2766\\
+QQQ & Unrestricted & 23 & 201 & 2565\\
+QQQ & Reversible & 24 & 805 & 2766\\
+\midrule
+IWM & IID & 27 & 2766 & 2766\\
+IWM & Unrestricted & 25 & 670 & 2766\\
+IWM & Reversible & 25 & 78 & 2766\\
+\bottomrule\end{tabular}
+\par\smallskip\parbox{0.98\linewidth}{\footnotesize Bins are the ten fixed edges of Figure~\ref{fig:calibration}, counted separately for each of the three one-versus-rest classes, so thirty bins are possible. Most are empty: the forecast probabilities concentrate near one third, and a bin holding two observations provides little precision about calibration. The counts here are the only measure of how much support each plotted marker has; the summary statistic and reference diagnostic built from the same bins are in Table~\ref{tab:calibration}.}
+\end{table}

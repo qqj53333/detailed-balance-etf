@@ -1,0 +1,115 @@
+{
+  "source": "existing v13run forecast files, not a new full model fit",
+  "assets": {
+    "SPY": {
+      "n": 2766,
+      "sha256": "b2e084d95a310d76cb17bf99d8efbadbc449b1a994909520209b6e0b8b9e6435",
+      "matches_v12_hash": true,
+      "metrics": {
+        "iid": {
+          "mean_net": -0.0003965690697844906,
+          "sd_net": 0.004230837299383188,
+          "sharpe": -1.4879652353395114,
+          "mean_weight": 0.4999755412431576,
+          "sd_weight": 3.495255983846968e-05
+        },
+        "markov": {
+          "mean_net": -0.00039231852323213487,
+          "sd_net": 0.0042502985744552624,
+          "sharpe": -1.4652767032904885,
+          "mean_weight": 0.49953050782821995,
+          "sd_weight": 0.012598032723063474
+        },
+        "reversible": {
+          "mean_net": -0.0003959064291271188,
+          "sd_net": 0.004216705178727037,
+          "sharpe": -1.490457467891826,
+          "mean_weight": 0.5006966643027051,
+          "sd_weight": 0.018911428295429748
+        }
+      },
+      "sharpe_difference": 0.02268853204902288,
+      "symmetric_mean_component": 0.01591194645968371,
+      "symmetric_scale_component": 0.006776585589339156,
+      "sd_change_pct": 0.4599863737353438
+    },
+    "QQQ": {
+      "n": 2766,
+      "sha256": "f729f1c4c1ef16ea6b6c101d3db79266440e8e4101a5fced2ccef2ca40522693",
+      "matches_v12_hash": true,
+      "metrics": {
+        "iid": {
+          "mean_net": -0.00036169927210130464,
+          "sd_net": 0.0054624051544135445,
+          "sharpe": -1.0511483088359932,
+          "mean_weight": 0.4999680996047197,
+          "sd_weight": 4.589444073528473e-05
+        },
+        "markov": {
+          "mean_net": -0.000359698839809765,
+          "sd_net": 0.005453527364603064,
+          "sharpe": -1.0470364738888946,
+          "mean_weight": 0.5004579624202341,
+          "sd_weight": 0.011028910302137917
+        },
+        "reversible": {
+          "mean_net": -0.0003611957367732643,
+          "sd_net": 0.005444960528398354,
+          "sharpe": -1.0530479577965717,
+          "mean_weight": 0.5016387393664526,
+          "sd_weight": 0.01804525752049186
+        }
+      },
+      "sharpe_difference": 0.004111834947098547,
+      "symmetric_mean_component": 0.0058182659332868805,
+      "symmetric_scale_component": -0.0017064309861882672,
+      "sd_change_pct": -0.1625252898589502
+    },
+    "IWM": {
+      "n": 2766,
+      "sha256": "50668c32bbcb1f49f1ebcc034fbdd7a38540df8cbe33fd9301d593e17874a869",
+      "matches_v12_hash": true,
+      "metrics": {
+        "iid": {
+          "mean_net": -0.0005632222212838497,
+          "sd_net": 0.0055695249307056004,
+          "sharpe": -1.6053210450683848,
+          "mean_weight": 0.4999661782361698,
+          "sd_weight": 4.8782545145504294e-05
+        },
+        "markov": {
+          "mean_net": -0.0005559459684956731,
+          "sd_net": 0.005594337862763472,
+          "sharpe": -1.5775537457102167,
+          "mean_weight": 0.49972006890955023,
+          "sd_weight": 0.012027195534892229
+        },
+        "reversible": {
+          "mean_net": -0.0005628292071793412,
+          "sd_net": 0.005574827734327833,
+          "sharpe": -1.6026749350091591,
+          "mean_weight": 0.500617669374205,
+          "sd_weight": 0.00871798971532213
+        }
+      },
+      "sharpe_difference": 0.02776729935816813,
+      "symmetric_mean_component": 0.020693106833718892,
+      "symmetric_scale_component": 0.007074192524449472,
+      "sd_change_pct": 0.445512541313442
+    }
+  },
+  "table_matches": {
+    "tab_bins.tex": true,
+    "tab_calibration.tex": true,
+    "tab_circulation.tex": true,
+    "tab_components.tex": true,
+    "tab_joint.tex": true,
+    "tab_jointbrier.tex": true,
+    "tab_jointecon.tex": true,
+    "tab_segments.tex": true,
+    "tab_sensitivity.tex": true,
+    "tab_simulation.tex": true
+  },
+  "archived_verify_passed": true,
+  "archived_verify_output": "231 comparisons, 0 mismatch(es)\n"
+}
